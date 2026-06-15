@@ -17,7 +17,6 @@ class Sandbox:
     def up(self):
         self._ensure_network()
         self._start_target()
-        self._start_dd_agent()
         console.print("[green]Sandbox up[/green]")
 
     def down(self):
@@ -59,30 +58,12 @@ class Sandbox:
             detach=True,
             remove=False,
             mem_limit="256m",
-            environment={
-                "DD_AGENT_HOST": "faultline-ddagent",
-                "DD_TRACE_AGENT_URL": "http://faultline-ddagent:8126",
-            },
-        )
-
-    def _start_dd_agent(self):
-        import os
-        api_key = os.environ.get("DD_API_KEY", "")
-        self.containers["ddagent"] = self.client.containers.run(
-            image="gcr.io/datadoghq/agent:7",
-            name="faultline-ddagent",
-            network=NETWORK_NAME,
-            detach=True,
-            remove=False,
-            environment={
-                "DD_API_KEY": api_key,
-                "DD_SITE": os.environ.get("DD_SITE", "datadoghq.com"),
-                "DD_APM_ENABLED": "true",
-                "DD_LOGS_ENABLED": "true",
-            },
         )
 
     def _build_target_image(self) -> str:
+        # TODO: support pre-built images via --image flag so customers can point
+        # faultline at their own registry image without a local Dockerfile.
+        # Currently targets must be a local directory with a Dockerfile.
         tag = f"faultline-target:{self.target_path.name}"
         console.print(f"[dim]Building target image: {tag}[/dim]")
         self.client.images.build(
