@@ -1,0 +1,19 @@
+name: dns_blackhole
+domain: infrastructure
+description: Block all DNS resolution and verify the service degrades gracefully without crashing
+
+fault:
+  type: dns_blackhole
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+expect:
+  max_recovery_seconds: 10
+  error_rate_below: 0.1
+
+compliance_tags:
+  - infra.network_resilience
+  - infra.dns_dependency
+  - infra.availability

@@ -103,6 +103,37 @@ class FaultInjector:
     def _recover_packet_corruption(self, fault: dict):
         self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
 
+    def _inject_dns_blackhole(self, fault: dict):
+        return self._exec_target(
+            "iptables -I OUTPUT -p udp --dport 53 -j DROP && iptables -I OUTPUT -p tcp --dport 53 -j DROP",
+            privileged=True,
+        )
+
+    def _recover_dns_blackhole(self, fault: dict):
+        self._exec_target(
+            "iptables -D OUTPUT -p udp --dport 53 -j DROP 2>/dev/null || true && iptables -D OUTPUT -p tcp --dport 53 -j DROP 2>/dev/null || true",
+            privileged=True,
+        )
+
+    def _inject_process_kill(self, fault: dict):
+        # SIGKILL PID 1 — tests container restart policy and recovery time
+        container = self.sandbox.get_container("target")
+        container.kill(signal="SIGKILL")
+
+    def _recover_process_kill(self, fault: dict):
+        pass  # Docker restart policy handles recovery; sandbox teardown handles cleanup
+
+    def _inject_time_travel(self, fault: dict):
+        offset = fault.get("offset_seconds", 3600)
+        return self._exec_target(
+            f"date -s \"$(date -d '+{offset} seconds' '+%Y-%m-%d %H:%M:%S')\"",
+            privileged=True,
+        )
+
+    def _recover_time_travel(self, fault: dict):
+        # Sync back via hardware clock
+        self._exec_target("hwclock -s 2>/dev/null || ntpdate -u pool.ntp.org 2>/dev/null || true", privileged=True)
+
     # --- Code ---
 
     def _inject_dependency_killed(self, fault: dict):

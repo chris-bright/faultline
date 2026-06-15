@@ -91,6 +91,10 @@ Results are saved to `/tmp/faultline/run_<timestamp>.json` (last 12 runs kept).
 - Python 3.11+
 - `DD_API_KEY` set (used by the runner; not required for local-only runs)
 
+## Future Direction
+
+**Multi-component stack testing** — faultline currently assumes a single target container. The next major architectural step is supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behavior can be observed. E.g. kill the message queue and measure whether the API degrades gracefully and whether jobs are lost or retried. This requires stack definitions (similar to docker-compose), per-component health probes, and fault targeting by service name. A two-service spike (API + Redis) is the natural starting point before full multi-component support.
+
 ## Known Limitations / Backlog
 
 - **Pre-built image support** — targets must currently be a local `Dockerfile`. A `--image` flag to pull from a registry is planned (`sandbox.py: _build_target_image`).
