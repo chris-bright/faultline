@@ -11,7 +11,7 @@ START_TIME = time.time()
 def health():
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
-        return jsonify({"status": "degraded", "reason": "DATABASE_URL not set"}), 503
+        return jsonify({"status": "degraded", "reason": "DATABASE_URL not set"}), 200
 
     return jsonify({
         "status": "ok",

@@ -47,10 +47,10 @@ class Orchestrator:
         console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
 
         sandbox = Sandbox(self.target_path, self.docker)
-        telemetry = TelemetryCollector(scenario["name"])
+        sandbox.up()
+        telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"))
 
         try:
-            sandbox.up()
             telemetry.start()
 
             # Baseline window
@@ -61,6 +61,7 @@ class Orchestrator:
             injector = FaultInjector(sandbox, self.docker)
             console.print(f"[red]Injecting fault:[/red] {scenario['fault']['type']}")
             injector.inject(scenario["fault"])
+            telemetry.mark_fault()
 
             # Observation window
             observation = scenario.get("observation_seconds", 30)
@@ -73,6 +74,7 @@ class Orchestrator:
             time.sleep(scenario.get("recovery_seconds", 15))
 
             metrics = telemetry.collect()
+            console.print(f"[dim]samples={metrics.get('total_samples')} error_rate={metrics.get('error_rate')} recovery_seconds={metrics.get('recovery_seconds')}[/dim]")
             result = self._score(scenario, metrics)
 
         finally:

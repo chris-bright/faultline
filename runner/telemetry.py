@@ -1,18 +1,16 @@
 import time
 import threading
-import requests
 from rich.console import Console
 
 console = Console()
-
-TARGET_URL = "http://localhost:8080"  # mapped from container
 
 
 class TelemetryCollector:
     """Polls the target during a scenario run and records health metrics."""
 
-    def __init__(self, scenario_name: str):
+    def __init__(self, scenario_name: str, container):
         self.scenario_name = scenario_name
+        self.container = container
         self._running = False
         self._thread = None
         self._samples = []
@@ -46,7 +44,7 @@ class TelemetryCollector:
         latencies = [s["latency_ms"] for s in self._samples if s["ok"] and s["latency_ms"] is not None]
         avg_latency = sum(latencies) / len(latencies) if latencies else None
 
-        recovery_seconds = None
+        recovery_seconds = float("inf")
         if self._fault_injected_at:
             first_recovery = next(
                 (s for s in self._samples if s["ok"] and s["ts"] > self._fault_injected_at),
@@ -68,9 +66,13 @@ class TelemetryCollector:
             ts = time.time()
             try:
                 start = time.time()
-                r = requests.get(f"{TARGET_URL}/health", timeout=2)
+                exit_code, output = self.container.exec_run(
+                    "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/health",
+                    demux=False,
+                )
                 latency_ms = (time.time() - start) * 1000
-                ok = r.status_code < 500
+                status_code = int(output.decode().strip()) if output else 0
+                ok = exit_code == 0 and status_code < 500
             except Exception:
                 latency_ms = None
                 ok = False
