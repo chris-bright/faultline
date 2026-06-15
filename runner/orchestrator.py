@@ -23,6 +23,7 @@ class Orchestrator:
         self.health_port = self.target_config.get("port", 8080)
         self.health_process = self.target_config.get("process")
         self.mem_limit = self.target_config.get("mem_limit", "256m")
+        self.startup_seconds = self.target_config.get("startup_seconds", 0)
 
     def run_scenario(self, scenario_path: str) -> dict:
         with open(scenario_path) as f:
@@ -55,6 +56,9 @@ class Orchestrator:
 
         sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
         sandbox.up()
+        if self.startup_seconds:
+            console.print(f"[dim]Waiting {self.startup_seconds}s for target to initialize...[/dim]")
+            time.sleep(self.startup_seconds)
         telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"),
                                        health_probe=self.health_probe,
                                        health_path=self.health_path,
