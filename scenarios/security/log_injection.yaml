@@ -1,0 +1,24 @@
+name: log_injection
+domain: security
+description: >
+  Inject crafted log lines (ANSI escape sequences, fake structured log entries,
+  log4shell-style patterns) and verify the detection layer fires.
+  Tests the observability stack, not just the app.
+
+fault:
+  type: log_injection
+  payloads:
+    - ansi_escape       # terminal escape sequences to corrupt log rendering
+    - fake_auth_success # inject "user=admin login=success" into app logs
+    - jndi_pattern      # ${jndi:ldap://...} to test SIEM rule coverage
+
+baseline_seconds: 5
+observation_seconds: 15
+recovery_seconds: 5
+
+expect:
+  detection_logged: true    # SIEM / DD Cloud SIEM should flag at least one pattern
+
+compliance_tags:
+  - security.log_integrity
+  - infra.availability

@@ -1,0 +1,25 @@
+name: lateral_movement
+domain: security
+description: >
+  From the target container, attempt to reach other containers on the
+  sandbox network that should be unreachable. Verifies network segmentation
+  holds and that cross-container probing is detected.
+
+fault:
+  type: lateral_movement
+  methods:
+    - port_scan         # nmap/nc sweep of the internal network range
+    - arp_probe         # ARP discovery of other hosts
+    - dns_enum          # enumerate internal DNS names
+
+baseline_seconds: 5
+observation_seconds: 20
+recovery_seconds: 5
+
+expect:
+  lateral_access_gained: false
+  detection_logged: true
+
+compliance_tags:
+  - container.network_isolation
+  - security.network_segmentation

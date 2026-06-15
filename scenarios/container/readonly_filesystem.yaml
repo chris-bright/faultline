@@ -1,0 +1,18 @@
+name: readonly_filesystem
+domain: container
+description: Remount root filesystem as read-only and verify the service handles write failures gracefully
+
+fault:
+  type: readonly_filesystem
+
+baseline_seconds: 10
+observation_seconds: 20
+recovery_seconds: 10
+
+expect:
+  max_recovery_seconds: 15
+  error_rate_below: 0.05
+
+compliance_tags:
+  - container.readonly_rootfs
+  - infra.availability

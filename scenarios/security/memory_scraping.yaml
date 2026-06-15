@@ -1,0 +1,25 @@
+name: memory_scraping
+domain: security
+description: >
+  Read /proc/<pid>/mem for running processes to find credential patterns
+  (API keys, JWT tokens, passwords) resident in process memory.
+  Verifies that sensitive values are not retained in memory longer than needed.
+
+fault:
+  type: memory_scraping
+  patterns:
+    - api_key_regex     # common API key formats
+    - jwt_regex         # eyJ... Bearer tokens
+    - password_regex    # password=, passwd=, pwd= in memory strings
+
+baseline_seconds: 5
+observation_seconds: 20
+recovery_seconds: 5
+
+expect:
+  credentials_found_in_memory: false
+  detection_logged: true
+
+compliance_tags:
+  - security.secret_hygiene
+  - cloud.secret_management

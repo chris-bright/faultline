@@ -1,0 +1,17 @@
+name: missing_env
+domain: cloud
+description: Remove a required environment variable and verify the service fails safely with a clear error
+
+fault:
+  type: missing_env
+  var: DATABASE_URL
+
+baseline_seconds: 10
+observation_seconds: 20
+recovery_seconds: 10
+
+expect:
+  error_rate_below: 0.5
+
+compliance_tags:
+  - cloud.secret_management

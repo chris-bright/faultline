@@ -1,0 +1,20 @@
+name: cpu_stress
+domain: infrastructure
+description: Saturate CPU and verify the service remains responsive within latency SLO
+
+fault:
+  type: cpu_stress
+  cores: 2
+  duration_seconds: 30
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+expect:
+  max_recovery_seconds: 20
+  error_rate_below: 0.1
+
+compliance_tags:
+  - infra.resource_exhaustion
+  - infra.availability
