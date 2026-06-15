@@ -11,12 +11,16 @@ class FaultInjector:
         self.sandbox = sandbox
         self.client = client
 
-    def inject(self, fault: dict):
+    def inject(self, fault: dict) -> bool:
         fault_type = fault["type"]
         handler = getattr(self, f"_inject_{fault_type}", None)
         if not handler:
             raise ValueError(f"Unknown fault type: {fault_type}")
-        handler(fault)
+        exit_code = handler(fault)
+        if exit_code and exit_code != 0:
+            console.print(f"[bold yellow]Warning: fault injection returned exit code {exit_code} — fault may not have applied[/bold yellow]")
+            return False
+        return True
 
     def recover(self, fault: dict):
         fault_type = fault["type"]
@@ -29,14 +33,14 @@ class FaultInjector:
     def _inject_cpu_stress(self, fault: dict):
         cores = fault.get("cores", 1)
         duration = fault.get("duration_seconds", 30)
-        self._exec_target(f"stress-ng --cpu {cores} --timeout {duration}s &")
+        return self._exec_target(f"cd /tmp && stress-ng --cpu {cores} --timeout {duration}s &")
 
     def _recover_cpu_stress(self, fault: dict):
         self._exec_target("pkill stress-ng || true")
 
     def _inject_memory_pressure(self, fault: dict):
         mb = fault.get("mb", 128)
-        self._exec_target(f"stress-ng --vm 1 --vm-bytes {mb}M --timeout 60s &")
+        return self._exec_target(f"cd /tmp && stress-ng --vm 1 --vm-bytes {mb}M --timeout 60s &")
 
     def _recover_memory_pressure(self, fault: dict):
         self._exec_target("pkill stress-ng || true")

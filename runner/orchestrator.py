@@ -16,6 +16,11 @@ class Orchestrator:
         self.target = target
         self.target_path = Path(__file__).parent.parent / "targets" / target
         self.docker = docker.from_env()
+        config_file = self.target_path / "target.yaml"
+        self.target_config = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
+        self.health_path = self.target_config.get("health_path", "/health")
+        self.health_port = self.target_config.get("port", 8080)
+        self.mem_limit = self.target_config.get("mem_limit", "256m")
 
     def run_scenario(self, scenario_path: str) -> dict:
         with open(scenario_path) as f:
@@ -33,7 +38,7 @@ class Orchestrator:
         return results
 
     def scaffold_only(self):
-        sandbox = Sandbox(self.target_path, self.docker)
+        sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
         sandbox.up()
         console.print(f"[green]Target '{self.target}' is up.[/green] Press Ctrl+C to stop.")
         try:
@@ -46,9 +51,10 @@ class Orchestrator:
         console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario['name']}")
         console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
 
-        sandbox = Sandbox(self.target_path, self.docker)
+        sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
         sandbox.up()
-        telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"))
+        telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"),
+                                       health_path=self.health_path, health_port=self.health_port)
 
         try:
             telemetry.start()
@@ -74,7 +80,6 @@ class Orchestrator:
             time.sleep(scenario.get("recovery_seconds", 15))
 
             metrics = telemetry.collect()
-            console.print(f"[dim]samples={metrics.get('total_samples')} error_rate={metrics.get('error_rate')} recovery_seconds={metrics.get('recovery_seconds')}[/dim]")
             result = self._score(scenario, metrics)
 
         finally:

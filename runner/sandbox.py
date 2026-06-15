@@ -8,9 +8,10 @@ NETWORK_NAME = "faultline-isolated"
 
 
 class Sandbox:
-    def __init__(self, target_path: Path, client: docker.DockerClient):
+    def __init__(self, target_path: Path, client: docker.DockerClient, mem_limit: str = "256m"):
         self.target_path = target_path
         self.client = client
+        self.mem_limit = mem_limit
         self.network = None
         self.containers = {}
 
@@ -57,7 +58,7 @@ class Sandbox:
             network=NETWORK_NAME,
             detach=True,
             remove=False,
-            mem_limit="256m",
+            mem_limit=self.mem_limit,
         )
 
     def _build_target_image(self) -> str:

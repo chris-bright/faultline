@@ -8,9 +8,10 @@ console = Console()
 class TelemetryCollector:
     """Polls the target during a scenario run and records health metrics."""
 
-    def __init__(self, scenario_name: str, container):
+    def __init__(self, scenario_name: str, container, health_path: str = "/health", health_port: int = 8080):
         self.scenario_name = scenario_name
         self.container = container
+        self.health_url = f"http://localhost:{health_port}{health_path}"
         self._running = False
         self._thread = None
         self._samples = []
@@ -67,7 +68,7 @@ class TelemetryCollector:
             try:
                 start = time.time()
                 exit_code, output = self.container.exec_run(
-                    "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080/health",
+                    f"curl -sf -o /dev/null -w '%{{http_code}}' {self.health_url}",
                     demux=False,
                 )
                 latency_ms = (time.time() - start) * 1000

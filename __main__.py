@@ -1,6 +1,5 @@
 import click
 from runner.orchestrator import Orchestrator
-from evaluator.compliance import ComplianceEvaluator
 from reports.reporter import Reporter
 
 
@@ -14,10 +13,9 @@ def cli():
 @click.option("--scenario", "-s", help="Path to a scenario YAML file")
 @click.option("--domain", "-d", type=click.Choice(["infrastructure", "code", "cloud", "container", "security"]), help="Run all scenarios in a domain")
 @click.option("--target", "-t", default="simple_api", help="Target service to test against")
-@click.option("--report", is_flag=True, help="Generate compliance report after run")
-@click.option("--framework", "-f", multiple=True, default=["cis-docker", "soc2"], help="Compliance frameworks to evaluate against")
-def run(scenario, domain, target, report, framework):
-    """Run fault scenarios against a target and optionally evaluate compliance."""
+@click.option("--debug", is_flag=True, help="Output full sample data as JSON")
+def run(scenario, domain, target, debug):
+    """Run fault scenarios against a target and output results."""
     orchestrator = Orchestrator(target=target)
 
     if scenario:
@@ -27,10 +25,7 @@ def run(scenario, domain, target, report, framework):
     else:
         raise click.UsageError("Provide --scenario or --domain")
 
-    if report:
-        evaluator = ComplianceEvaluator(frameworks=list(framework))
-        findings = evaluator.evaluate(results)
-        Reporter().render(findings)
+    Reporter(debug=debug).render(results)
 
 
 @cli.command()
