@@ -18,8 +18,10 @@ class Orchestrator:
         self.docker = docker.from_env()
         config_file = self.target_path / "target.yaml"
         self.target_config = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
-        self.health_path = self.target_config.get("health_path", "/health")
+        self.health_probe = self.target_config.get("health_probe")
+        self.health_path = self.target_config.get("health_path")
         self.health_port = self.target_config.get("port", 8080)
+        self.health_process = self.target_config.get("process")
         self.mem_limit = self.target_config.get("mem_limit", "256m")
 
     def run_scenario(self, scenario_path: str) -> dict:
@@ -54,7 +56,10 @@ class Orchestrator:
         sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
         sandbox.up()
         telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"),
-                                       health_path=self.health_path, health_port=self.health_port)
+                                       health_probe=self.health_probe,
+                                       health_path=self.health_path,
+                                       health_port=self.health_port,
+                                       health_process=self.health_process)
 
         try:
             telemetry.start()

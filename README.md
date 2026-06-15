@@ -1,36 +1,46 @@
 # faultline
 
-Controlled fault injection and compliance evaluation for infrastructure, code, cloud config, and containers.
-
-Spins up an isolated environment, runs a target through defined fault scenarios, collects telemetry via Datadog, and scores results against compliance frameworks (CIS, SOC 2, PCI-DSS).
+Controlled fault injection for containerized services. Spins up an airgapped Docker sandbox, runs a target through defined fault scenarios, collects telemetry, and outputs structured results for analysis or downstream submission to Datadog.
 
 ## Concept
 
 ```
 scenario.yaml → sandbox (airgapped Docker network) → target deployment
-    → fault injection → telemetry collection → compliance evaluation → report
+    → fault injection → telemetry collection → JSON results + stdout histogram
 ```
 
 ## Fault Domains
 
 | Domain | Examples |
 |---|---|
-| Infrastructure | CPU stress, memory pressure, disk fill, network partition |
-| Code | Dependency killed, malformed input, slow dependency (latency injection) |
+| Infrastructure | CPU stress, memory pressure, disk fill, network stress, process freeze |
+| Code | Dependency killed, malformed input, latency injection |
 | Cloud | Missing env vars, secret rotation simulation |
 | Container | OOM kill, read-only filesystem, capability drop |
-| Security | Privilege escalation attempts, secret exfiltration, lateral movement, log injection, memory scraping |
+| Security | Privilege escalation, secret exfiltration, lateral movement, log injection, memory scraping |
 
-The security domain is active testing — not misconfiguration scanning (Datadog CSM already does that).
-Each scenario attempts an attack vector in the isolated environment and scores whether the system
-detected or blocked it, not just whether the config was correct.
+The security domain is active testing — not misconfiguration scanning.
+Each scenario attempts an attack vector in the isolated environment and measures whether the system
+detected or blocked it.
 
-## Compliance Frameworks (POC)
+## Targets
 
-- CIS Docker Benchmark
-- SOC 2 (CC6 — Logical Access, CC7 — System Operations)
-- PCI-DSS 10.x (logging & monitoring controls)
-- OWASP Docker Top 10
+Targets live in `targets/<name>/` and require:
+- A `Dockerfile` (with `stress-ng`, `curl`, `procps` installed)
+- A `target.yaml` describing how to health-check the service
+
+```yaml
+# target.yaml options
+health_probe: "redis-cli PING | grep -q PONG"  # explicit probe command (highest priority)
+health_path: /health                             # HTTP path (uses curl with 1s timeout)
+port: 8080                                       # port for HTTP or fallback nc check
+process: python                                  # process name for /proc state check
+mem_limit: 256m
+```
+
+Health probe priority: `health_probe` → HTTP `health_path` → `/proc/<pid>/status` state → `nc -z port`
+
+Built-in targets: `simple_api` (Flask), `grafana`, `redis`
 
 ## Project Structure
 
@@ -42,30 +52,47 @@ faultline/
 │   ├── cloud/
 │   ├── container/
 │   └── security/
-├── targets/            # Pre-baked target services to test against
-│   └── simple_api/     # Flask API — default POC target
-├── runner/             # Orchestrates sandbox lifecycle + fault execution
-├── evaluator/          # Scores telemetry + maps findings to compliance controls
-└── reports/            # Output — JSON + human-readable audit summaries
+├── targets/            # Target service definitions
+│   ├── simple_api/     # Flask API — default POC target
+│   ├── grafana/        # Grafana (Alpine-based)
+│   └── redis/          # Redis (Alpine-based)
+├── runner/             # Sandbox lifecycle, fault injection, telemetry
+├── evaluator/          # Compliance control mapping (CIS, SOC 2, PCI-DSS)
+└── reports/            # JSON output + stdout histogram renderer
 ```
 
 ## Quickstart
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run a single scenario
-python -m faultline run --scenario scenarios/infrastructure/cpu_stress.yaml --target simple_api
+python __main__.py run --scenario scenarios/infrastructure/cpu_stress.yaml --target simple_api
 
-# Run all scenarios in a domain with a compliance report
-python -m faultline run --domain infrastructure --target simple_api --report
+# Run all scenarios in a domain
+python __main__.py run --domain infrastructure --target simple_api
 
-# Run security domain against OWASP Docker Top 10 and SOC 2
-python -m faultline run --domain security --target simple_api --report --framework owasp-docker --framework soc2
+# Run against a different target
+python __main__.py run --domain infrastructure --target redis
+
+# Full sample data output
+python __main__.py run --scenario scenarios/infrastructure/cpu_stress.yaml --target simple_api --debug
+
+# Verify target starts correctly before running faults
+python __main__.py scaffold --target simple_api
 ```
+
+Results are saved to `/tmp/faultline/run_<timestamp>.json` (last 12 runs kept).
 
 ## Requirements
 
-- Docker (with compose)
+- Docker running locally
 - Python 3.11+
-- Datadog Agent running locally (or DD_API_KEY set for direct submission)
+- `DD_API_KEY` set (used by the runner; not required for local-only runs)
+
+## Known Limitations / Backlog
+
+- **Pre-built image support** — targets must currently be a local `Dockerfile`. A `--image` flag to pull from a registry is planned (`sandbox.py: _build_target_image`).
+- **Custom endpoints** — `target.yaml` will support named API calls with sample payloads to measure real workload impact during fault windows, not just health probe status.
+- **Scoped seccomp for process freeze** — `process_freeze` currently uses `docker pause` (cgroups freezer) which freezes the whole container. A targeted seccomp profile allowing only `kill`/`ptrace` capabilities would enable single-process freeze without elevated privileges, matching how tools like Gremlin implement it.

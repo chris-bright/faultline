@@ -45,6 +45,18 @@ class FaultInjector:
     def _recover_memory_pressure(self, fault: dict):
         self._exec_target("pkill stress-ng || true")
 
+    def _inject_process_freeze(self, fault: dict):
+        container = self.sandbox.get_container("target")
+        container.pause()
+        console.print("[dim]Container paused via cgroups freezer[/dim]")
+
+    def _recover_process_freeze(self, fault: dict):
+        container = self.sandbox.get_container("target")
+        try:
+            container.unpause()
+        except Exception:
+            pass
+
     def _inject_disk_fill(self, fault: dict):
         mb = fault.get("mb", 100)
         self._exec_target(f"dd if=/dev/zero of=/tmp/faultline_fill bs=1M count={mb} &")
@@ -204,7 +216,7 @@ class FaultInjector:
         if not container:
             raise RuntimeError("Target container not found")
         exit_code, output = container.exec_run(
-            f"/bin/sh -c '{cmd}'",
+            ["/bin/sh", "-c", cmd],
             privileged=privileged,
         )
         if output:

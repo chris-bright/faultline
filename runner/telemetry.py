@@ -8,10 +8,19 @@ console = Console()
 class TelemetryCollector:
     """Polls the target during a scenario run and records health metrics."""
 
-    def __init__(self, scenario_name: str, container, health_path: str = "/health", health_port: int = 8080):
+    def __init__(self, scenario_name: str, container, health_probe: str = None,
+                 health_path: str = None, health_port: int = 8080, health_process: str = None):
         self.scenario_name = scenario_name
         self.container = container
-        self.health_url = f"http://localhost:{health_port}{health_path}"
+        # Priority: explicit probe > HTTP health path > /proc state check > port check
+        if health_probe:
+            self.health_probe = health_probe
+        elif health_path:
+            self.health_probe = f"curl -sf --max-time 1 -o /dev/null -w '%{{http_code}}' http://localhost:{health_port}{health_path} | grep -qE '^[1-4]'"
+        elif health_process:
+            self.health_probe = f"pid=$(pgrep -f '{health_process}' | head -1) && grep -qE 'State:.*[RS]' /proc/$pid/status"
+        else:
+            self.health_probe = f"nc -z localhost {health_port}"
         self._running = False
         self._thread = None
         self._samples = []
@@ -67,13 +76,11 @@ class TelemetryCollector:
             ts = time.time()
             try:
                 start = time.time()
-                exit_code, output = self.container.exec_run(
-                    f"curl -sf -o /dev/null -w '%{{http_code}}' {self.health_url}",
-                    demux=False,
+                exit_code, _ = self.container.exec_run(
+                    f"/bin/sh -c '{self.health_probe}'", demux=False,
                 )
                 latency_ms = (time.time() - start) * 1000
-                status_code = int(output.decode().strip()) if output else 0
-                ok = exit_code == 0 and status_code < 500
+                ok = exit_code == 0
             except Exception:
                 latency_ms = None
                 ok = False
