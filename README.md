@@ -94,5 +94,5 @@ Results are saved to `/tmp/faultline/run_<timestamp>.json` (last 12 runs kept).
 ## Known Limitations / Backlog
 
 - **Pre-built image support** — targets must currently be a local `Dockerfile`. A `--image` flag to pull from a registry is planned (`sandbox.py: _build_target_image`).
-- **Custom endpoints** — `target.yaml` will support named API calls with sample payloads to measure real workload impact during fault windows, not just health probe status.
+- **Custom endpoints** — `target.yaml` will support named API calls with sample payloads to measure real workload impact during fault windows, not just health probe status. This also unblocks network fault scenarios (packet loss, bandwidth cap, packet corruption) — the current `docker exec` health probe bypasses the container's network stack entirely, so `tc netem` faults have no observable effect. A sidecar prober container on the same isolated network making real requests to the target would go through eth0 and make network faults measurable without breaking the airgap.
 - **Scoped seccomp for process freeze** — `process_freeze` currently uses `docker pause` (cgroups freezer) which freezes the whole container. A targeted seccomp profile allowing only `kill`/`ptrace` capabilities would enable single-process freeze without elevated privileges, matching how tools like Gremlin implement it.

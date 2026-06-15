@@ -65,13 +65,43 @@ class FaultInjector:
         self._exec_target("rm -f /tmp/faultline_fill")
 
     def _inject_network_partition(self, fault: dict):
-        # Drop all traffic except to DD agent
         container = self.sandbox.get_container("target")
         container.exec_run("iptables -I OUTPUT -j DROP", privileged=True)
 
     def _recover_network_partition(self, fault: dict):
         container = self.sandbox.get_container("target")
         container.exec_run("iptables -F OUTPUT", privileged=True)
+
+    def _inject_packet_loss(self, fault: dict):
+        pct = fault.get("percent", 20)
+        return self._exec_target(
+            f"tc qdisc add dev eth0 root netem loss {pct}%",
+            privileged=True,
+        )
+
+    def _recover_packet_loss(self, fault: dict):
+        self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
+
+    def _inject_bandwidth_cap(self, fault: dict):
+        # tbf: token bucket filter — hard rate limit on egress
+        rate = fault.get("rate", "1mbit")
+        return self._exec_target(
+            f"tc qdisc add dev eth0 root tbf rate {rate} burst 32kbit latency 400ms",
+            privileged=True,
+        )
+
+    def _recover_bandwidth_cap(self, fault: dict):
+        self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
+
+    def _inject_packet_corruption(self, fault: dict):
+        pct = fault.get("percent", 5)
+        return self._exec_target(
+            f"tc qdisc add dev eth0 root netem corrupt {pct}%",
+            privileged=True,
+        )
+
+    def _recover_packet_corruption(self, fault: dict):
+        self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
 
     # --- Code ---
 

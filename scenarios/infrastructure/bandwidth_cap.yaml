@@ -1,0 +1,19 @@
+name: bandwidth_cap
+domain: infrastructure
+description: Cap egress to 1mbit and verify the service remains responsive under severe bandwidth constraint
+
+fault:
+  type: bandwidth_cap
+  rate: 1mbit
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+expect:
+  max_recovery_seconds: 10
+  error_rate_below: 0.1
+
+compliance_tags:
+  - infra.network_resilience
+  - infra.availability

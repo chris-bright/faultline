@@ -1,0 +1,19 @@
+name: packet_loss
+domain: infrastructure
+description: Inject 20% packet loss and verify the service remains responsive within acceptable error rate
+
+fault:
+  type: packet_loss
+  percent: 20
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+expect:
+  max_recovery_seconds: 10
+  error_rate_below: 0.4
+
+compliance_tags:
+  - infra.network_resilience
+  - infra.availability
