@@ -1,5 +1,6 @@
 import time
 import threading
+from runner.runtime import ContainerRuntime
 from rich.console import Console
 
 console = Console()
@@ -8,11 +9,13 @@ console = Console()
 class TelemetryCollector:
     """Polls the target during a scenario run and records health metrics."""
 
-    def __init__(self, scenario_name: str, container, health_probe: str = None,
-                 health_path: str = None, health_port: int = 8080, health_process: str = None):
+    def __init__(self, scenario_name: str, runtime: ContainerRuntime, container_name: str,
+                 health_probe: str = None, health_path: str = None,
+                 health_port: int = 8080, health_process: str = None):
         self.scenario_name = scenario_name
-        self.container = container
-        # Priority: explicit probe > HTTP health path > /proc state check > port check
+        self._runtime = runtime
+        self._container_name = container_name
+
         if health_probe:
             self.health_probe = health_probe
         elif health_path:
@@ -21,6 +24,7 @@ class TelemetryCollector:
             self.health_probe = f"pid=$(pgrep -f '{health_process}' | head -1) && grep -qE 'State:.*[RS]' /proc/$pid/status"
         else:
             self.health_probe = f"nc -z localhost {health_port}"
+
         self._running = False
         self._thread = None
         self._samples = []
@@ -30,9 +34,7 @@ class TelemetryCollector:
     def probe_once(self) -> bool:
         """Run the health probe once and return True if the container is healthy."""
         try:
-            exit_code, _ = self.container.exec_run(
-                f"/bin/sh -c '{self.health_probe}'", demux=False,
-            )
+            exit_code, _ = self._runtime.exec_run(self._container_name, self.health_probe)
             return exit_code == 0
         except Exception:
             return False
@@ -86,9 +88,7 @@ class TelemetryCollector:
             ts = time.time()
             try:
                 start = time.time()
-                exit_code, _ = self.container.exec_run(
-                    f"/bin/sh -c '{self.health_probe}'", demux=False,
-                )
+                exit_code, _ = self._runtime.exec_run(self._container_name, self.health_probe)
                 latency_ms = (time.time() - start) * 1000
                 ok = exit_code == 0
             except Exception:

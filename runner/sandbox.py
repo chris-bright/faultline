@@ -1,23 +1,15 @@
-import docker
-from rich.console import Console
-
-console = Console()
+from runner.runtime import ContainerRuntime, DockerRuntime
 
 
 class Sandbox:
-    """Attaches to an already-running container. faultline does not manage container lifecycle."""
+    """Attaches to a running container via the configured runtime."""
 
-    def __init__(self, container_name: str, client: docker.DockerClient):
+    def __init__(self, container_name: str, runtime: ContainerRuntime = None):
         self.container_name = container_name
-        self.client = client
-        self._container = None
+        self.runtime = runtime or DockerRuntime()
 
     def attach(self):
-        try:
-            self._container = self.client.containers.get(self.container_name)
-            console.print(f"[green]Attached:[/green] {self.container_name} ({self._container.short_id})")
-        except docker.errors.NotFound:
-            raise RuntimeError(f"Container '{self.container_name}' not found — is it running?")
+        self.runtime.attach(self.container_name)
 
-    def get_container(self, name: str = "target"):
-        return self._container
+    def get_target_pid(self) -> int:
+        return self.runtime.get_pid(self.container_name)

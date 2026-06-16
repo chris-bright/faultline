@@ -1,6 +1,5 @@
 import time
 import yaml
-import docker
 from pathlib import Path
 from rich.console import Console
 from runner.sandbox import Sandbox
@@ -12,7 +11,6 @@ console = Console()
 
 class Orchestrator:
     def __init__(self, config: str):
-        self.docker = docker.from_env()
         config_path = Path(config)
         if not config_path.exists():
             raise FileNotFoundError(f"Target config not found: {config_path}")
@@ -44,12 +42,13 @@ class Orchestrator:
         console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario['name']}")
         console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
 
-        sandbox = Sandbox(self.container_name, self.docker)
+        sandbox = Sandbox(self.container_name)
         sandbox.attach()
 
         telemetry = TelemetryCollector(
             scenario["name"],
-            sandbox.get_container(),
+            sandbox.runtime,
+            sandbox.container_name,
             health_probe=self.health_probe,
             health_path=self.health_path,
             health_port=self.health_port,
@@ -70,7 +69,7 @@ class Orchestrator:
             console.print("[yellow]Collecting baseline...[/yellow]")
             time.sleep(scenario.get("baseline_seconds", 10))
 
-            injector = FaultInjector(sandbox, self.docker)
+            injector = FaultInjector(sandbox)
             console.print(f"[red]Injecting fault:[/red] {scenario['fault']['type']}")
             try:
                 injector.inject(scenario["fault"])

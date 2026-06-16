@@ -57,6 +57,29 @@ faultline performs a pre-flight health check before each scenario. If the contai
 
 Scenarios are skipped with a clear `SKIP` result if a required tool (`tc`, `stress-ng`, `iptables`) is not available in the target container — no false PASSes.
 
+## Project Structure
+
+```
+faultline/
+├── scenarios/          # YAML fault scenario definitions
+│   ├── infrastructure/
+│   ├── code/
+│   ├── cloud/
+│   ├── container/
+│   └── security/
+├── targets/            # Example target configs (bring your own)
+│   └── simple_api/
+├── runner/
+│   ├── runtime.py      # ContainerRuntime interface + DockerRuntime
+│   ├── sandbox.py      # Attaches to a running container via the runtime
+│   ├── fault.py        # Fault injection (nsenter host-level + exec fallback)
+│   ├── telemetry.py    # Health polling during scenario runs
+│   └── orchestrator.py # Scenario execution + scoring
+├── reports/            # JSON output + stdout histogram renderer
+├── Dockerfile          # faultline agent image (includes tc, iptables, stress-ng)
+└── faultline.sh        # Launch script with required capabilities
+```
+
 ## Requirements
 
 - Docker running locally
