@@ -1,29 +1,29 @@
-import os
 import time
 import yaml
 import docker
 from pathlib import Path
 from rich.console import Console
 from runner.sandbox import Sandbox
-from runner.fault import FaultInjector
+from runner.fault import FaultInjector, FaultNotApplied
 from runner.telemetry import TelemetryCollector
 
 console = Console()
 
 
 class Orchestrator:
-    def __init__(self, target: str):
-        self.target = target
-        self.target_path = Path(__file__).parent.parent / "targets" / target
+    def __init__(self, config: str):
         self.docker = docker.from_env()
-        config_file = self.target_path / "target.yaml"
-        self.target_config = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
+        config_path = Path(config)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Target config not found: {config_path}")
+        self.target_config = yaml.safe_load(config_path.read_text())
+        self.container_name = self.target_config.get("container")
+        if not self.container_name:
+            raise ValueError(f"target.yaml must specify 'container' — the name of the running container to attach to")
         self.health_probe = self.target_config.get("health_probe")
         self.health_path = self.target_config.get("health_path")
         self.health_port = self.target_config.get("port", 8080)
         self.health_process = self.target_config.get("process")
-        self.mem_limit = self.target_config.get("mem_limit", "256m")
-        self.startup_seconds = self.target_config.get("startup_seconds", 0)
 
     def run_scenario(self, scenario_path: str) -> dict:
         with open(scenario_path) as f:
@@ -40,50 +40,59 @@ class Orchestrator:
             results.append(self._execute(scenario))
         return results
 
-    def scaffold_only(self):
-        sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
-        sandbox.up()
-        console.print(f"[green]Target '{self.target}' is up.[/green] Press Ctrl+C to stop.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            sandbox.down()
-
     def _execute(self, scenario: dict) -> dict:
         console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario['name']}")
         console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
 
-        sandbox = Sandbox(self.target_path, self.docker, mem_limit=self.mem_limit)
-        sandbox.up()
-        if self.startup_seconds:
-            console.print(f"[dim]Waiting {self.startup_seconds}s for target to initialize...[/dim]")
-            time.sleep(self.startup_seconds)
-        telemetry = TelemetryCollector(scenario["name"], sandbox.get_container("target"),
-                                       health_probe=self.health_probe,
-                                       health_path=self.health_path,
-                                       health_port=self.health_port,
-                                       health_process=self.health_process)
+        sandbox = Sandbox(self.container_name, self.docker)
+        sandbox.attach()
+
+        telemetry = TelemetryCollector(
+            scenario["name"],
+            sandbox.get_container(),
+            health_probe=self.health_probe,
+            health_path=self.health_path,
+            health_port=self.health_port,
+            health_process=self.health_process,
+        )
+
+        console.print("[dim]Pre-flight: checking target health...[/dim]")
+        if not telemetry.probe_once():
+            raise RuntimeError(
+                f"Pre-flight failed: container '{self.container_name}' is not healthy before fault injection. "
+                "Fix the target before running scenarios."
+            )
+        console.print("[dim]Pre-flight: OK[/dim]")
 
         try:
             telemetry.start()
 
-            # Baseline window
             console.print("[yellow]Collecting baseline...[/yellow]")
             time.sleep(scenario.get("baseline_seconds", 10))
 
-            # Inject fault
             injector = FaultInjector(sandbox, self.docker)
             console.print(f"[red]Injecting fault:[/red] {scenario['fault']['type']}")
-            injector.inject(scenario["fault"])
+            try:
+                injector.inject(scenario["fault"])
+            except FaultNotApplied as e:
+                telemetry.stop()
+                console.print(f"[bold red]SKIP:[/bold red] {e}")
+                return {
+                    "scenario": scenario["name"],
+                    "domain": scenario.get("domain"),
+                    "fault_type": scenario["fault"]["type"],
+                    "passed": False,
+                    "skipped": True,
+                    "findings": [{"check": "fault_applied", "passed": False, "note": str(e)}],
+                    "metrics": {},
+                    "compliance_tags": scenario.get("compliance_tags", []),
+                }
             telemetry.mark_fault()
 
-            # Observation window
             observation = scenario.get("observation_seconds", 30)
             console.print(f"[yellow]Observing for {observation}s...[/yellow]")
             time.sleep(observation)
 
-            # Recovery check
             injector.recover(scenario["fault"])
             console.print("[yellow]Checking recovery...[/yellow]")
             time.sleep(scenario.get("recovery_seconds", 15))
@@ -93,7 +102,6 @@ class Orchestrator:
 
         finally:
             telemetry.stop()
-            sandbox.down()
 
         console.print(f"[bold]Result:[/bold] {'[green]PASS' if result['passed'] else '[red]FAIL'}[/]")
         return result
@@ -127,7 +135,6 @@ class Orchestrator:
                     "passed": False,
                 })
 
-        # Security-specific expectations
         for bool_check in ("escalation_succeeded", "lateral_access_gained",
                            "secrets_exposed", "credentials_found_in_memory"):
             if bool_check in expectations:
@@ -152,7 +159,7 @@ class Orchestrator:
                     "expected": True,
                     "actual": False,
                     "passed": False,
-                    "note": "No detection signal observed in DD Agent or syslog during attack window",
+                    "note": "No detection signal observed during attack window",
                 })
 
         return {

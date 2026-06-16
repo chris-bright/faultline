@@ -1,75 +1,23 @@
 import docker
-from pathlib import Path
 from rich.console import Console
 
 console = Console()
 
-NETWORK_NAME = "faultline-isolated"
-
 
 class Sandbox:
-    def __init__(self, target_path: Path, client: docker.DockerClient, mem_limit: str = "256m"):
-        self.target_path = target_path
+    """Attaches to an already-running container. faultline does not manage container lifecycle."""
+
+    def __init__(self, container_name: str, client: docker.DockerClient):
+        self.container_name = container_name
         self.client = client
-        self.mem_limit = mem_limit
-        self.network = None
-        self.containers = {}
+        self._container = None
 
-    def up(self):
-        self._ensure_network()
-        self._start_target()
-        console.print("[green]Sandbox up[/green]")
-
-    def down(self):
-        for name, container in self.containers.items():
-            try:
-                container.stop(timeout=5)
-                container.remove()
-                console.print(f"[dim]Removed container: {name}[/dim]")
-            except Exception:
-                pass
-        if self.network:
-            try:
-                self.network.remove()
-            except Exception:
-                pass
-        console.print("[dim]Sandbox torn down[/dim]")
-
-    def get_container(self, name: str):
-        return self.containers.get(name)
-
-    def _ensure_network(self):
+    def attach(self):
         try:
-            self.network = self.client.networks.get(NETWORK_NAME)
-            self.network.remove()
+            self._container = self.client.containers.get(self.container_name)
+            console.print(f"[green]Attached:[/green] {self.container_name} ({self._container.short_id})")
         except docker.errors.NotFound:
-            pass
-        self.network = self.client.networks.create(
-            NETWORK_NAME,
-            driver="bridge",
-            internal=True,  # airgapped — no external routing
-        )
+            raise RuntimeError(f"Container '{self.container_name}' not found — is it running?")
 
-    def _start_target(self):
-        import os
-        self.containers["target"] = self.client.containers.run(
-            image=self._build_target_image(),
-            name="faultline-target",
-            network=NETWORK_NAME,
-            detach=True,
-            remove=False,
-            mem_limit=self.mem_limit,
-        )
-
-    def _build_target_image(self) -> str:
-        # TODO: support pre-built images via --image flag so customers can point
-        # faultline at their own registry image without a local Dockerfile.
-        # Currently targets must be a local directory with a Dockerfile.
-        tag = f"faultline-target:{self.target_path.name}"
-        console.print(f"[dim]Building target image: {tag}[/dim]")
-        self.client.images.build(
-            path=str(self.target_path),
-            tag=tag,
-            rm=True,
-        )
-        return tag
+    def get_container(self, name: str = "target"):
+        return self._container

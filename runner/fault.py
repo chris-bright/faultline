@@ -4,6 +4,10 @@ from rich.console import Console
 console = Console()
 
 
+class FaultNotApplied(Exception):
+    """Raised when a fault cannot be injected because a required tool is missing in the target container."""
+
+
 class FaultInjector:
     """Injects faults into sandbox containers by fault type."""
 
@@ -16,11 +20,19 @@ class FaultInjector:
         handler = getattr(self, f"_inject_{fault_type}", None)
         if not handler:
             raise ValueError(f"Unknown fault type: {fault_type}")
+        # FaultNotApplied raised directly by handlers via _require_tool
         exit_code = handler(fault)
         if exit_code and exit_code != 0:
-            console.print(f"[bold yellow]Warning: fault injection returned exit code {exit_code} — fault may not have applied[/bold yellow]")
+            console.print(f"[bold yellow]Warning: fault injection returned exit code {exit_code}[/bold yellow]")
             return False
         return True
+
+    def _require_tool(self, *tools: str):
+        """Raise FaultNotApplied if any required tool is missing from the container."""
+        for tool in tools:
+            exit_code = self._exec_target(f"command -v {tool} >/dev/null 2>&1")
+            if exit_code != 0:
+                raise FaultNotApplied(f"Required tool '{tool}' not found in container — scenario cannot run on this target")
 
     def recover(self, fault: dict):
         fault_type = fault["type"]
@@ -31,6 +43,7 @@ class FaultInjector:
     # --- Infrastructure ---
 
     def _inject_cpu_stress(self, fault: dict):
+        self._require_tool("stress-ng")
         cores = fault.get("cores", 1)
         duration = fault.get("duration_seconds", 30)
         return self._exec_target(f"cd /tmp && stress-ng --cpu {cores} --timeout {duration}s &")
@@ -39,6 +52,7 @@ class FaultInjector:
         self._exec_target("pkill stress-ng || true")
 
     def _inject_memory_pressure(self, fault: dict):
+        self._require_tool("stress-ng")
         mb = fault.get("mb", 128)
         return self._exec_target(f"cd /tmp && stress-ng --vm 1 --vm-bytes {mb}M --timeout 60s &")
 
@@ -73,6 +87,7 @@ class FaultInjector:
         container.exec_run("iptables -F OUTPUT", privileged=True)
 
     def _inject_packet_loss(self, fault: dict):
+        self._require_tool("tc")
         pct = fault.get("percent", 20)
         return self._exec_target(
             f"tc qdisc add dev eth0 root netem loss {pct}%",
@@ -83,7 +98,7 @@ class FaultInjector:
         self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
 
     def _inject_bandwidth_cap(self, fault: dict):
-        # tbf: token bucket filter — hard rate limit on egress
+        self._require_tool("tc")
         rate = fault.get("rate", "1mbit")
         return self._exec_target(
             f"tc qdisc add dev eth0 root tbf rate {rate} burst 32kbit latency 400ms",
@@ -94,6 +109,7 @@ class FaultInjector:
         self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
 
     def _inject_packet_corruption(self, fault: dict):
+        self._require_tool("tc")
         pct = fault.get("percent", 5)
         return self._exec_target(
             f"tc qdisc add dev eth0 root netem corrupt {pct}%",
@@ -104,6 +120,7 @@ class FaultInjector:
         self._exec_target("tc qdisc del dev eth0 root || true", privileged=True)
 
     def _inject_dns_blackhole(self, fault: dict):
+        self._require_tool("iptables")
         return self._exec_target(
             "iptables -I OUTPUT -p udp --dport 53 -j DROP && iptables -I OUTPUT -p tcp --dport 53 -j DROP",
             privileged=True,
@@ -150,6 +167,7 @@ class FaultInjector:
             container.unpause()
 
     def _inject_latency_injection(self, fault: dict):
+        self._require_tool("tc")
         ms = fault.get("ms", 500)
         self._exec_target(
             f"tc qdisc add dev eth0 root netem delay {ms}ms",
@@ -162,7 +180,7 @@ class FaultInjector:
     # --- Container ---
 
     def _inject_oom_kill(self, fault: dict):
-        # Force OOM by allocating more memory than the container limit
+        self._require_tool("stress-ng")
         self._exec_target("stress-ng --vm 1 --vm-bytes 512M --timeout 10s &")
 
     def _recover_oom_kill(self, fault: dict):

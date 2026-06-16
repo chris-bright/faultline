@@ -1,5 +1,6 @@
 import json
 import math
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
@@ -9,7 +10,7 @@ from rich import box
 
 console = Console()
 
-RESULTS_DIR = Path("/tmp/faultline")
+RESULTS_DIR = Path(tempfile.gettempdir()) / "faultline"
 MAX_RESULTS = 12
 HISTOGRAM_WIDTH = 30
 
@@ -44,6 +45,14 @@ class Reporter:
         metrics = result.get("metrics", {})
         samples = metrics.get("samples", [])
         latencies = [s["latency_ms"] for s in samples if s.get("ok") and s.get("latency_ms") is not None]
+
+        if result.get("skipped"):
+            console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
+                          f"[dim]{result['fault_type']}[/dim]  "
+                          f"[yellow]SKIP[/yellow]")
+            note = result.get("findings", [{}])[0].get("note", "")
+            console.print(f"[dim]  {note}[/dim]")
+            return
 
         console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
                       f"[dim]{result['fault_type']}[/dim]  "

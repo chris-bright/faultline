@@ -27,6 +27,16 @@ class TelemetryCollector:
         self._fault_injected_at = None
         self._recovered_at = None
 
+    def probe_once(self) -> bool:
+        """Run the health probe once and return True if the container is healthy."""
+        try:
+            exit_code, _ = self.container.exec_run(
+                f"/bin/sh -c '{self.health_probe}'", demux=False,
+            )
+            return exit_code == 0
+        except Exception:
+            return False
+
     def start(self):
         self._running = True
         self._thread = threading.Thread(target=self._poll, daemon=True)

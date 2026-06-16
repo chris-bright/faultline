@@ -1,3 +1,4 @@
+container: simple_api
 health_path: /health
 port: 8080
 process: python
