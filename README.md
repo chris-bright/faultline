@@ -93,6 +93,8 @@ faultline/
 
 **DD results submission** — the JSON output is already shaped for Datadog. The submission layer will POST fault injection events to the DD Events API (so they appear as annotations on APM traces and dashboards) and submit scenario metrics as custom metrics. Customers already tracing their services with DD APM will see exactly which spans and functions break during each fault window.
 
+**Kubernetes support** — the `ContainerRuntime` interface is already the right seam for this. The implementation requires a DaemonSet deployment model: faultline agent pods run on every node with `hostPID: true`, exposing a local HTTP server that accepts fault commands and executes them via `nsenter`. A controller routes requests to the correct node agent after resolving which node the target pod lives on via the k8s API. `KubernetesRuntime` then implements the interface by posting to the agent HTTP API instead of calling Docker SDK directly. Scenarios, fault types, telemetry, and the reporter are unchanged. The gaps vs Docker: no native pause/unpause (workaround: scale replicas to 0/1), and `get_pid()` requires the DaemonSet deployment to be on the same node as the target.
+
 **Multi-component stack testing** — faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behavior observed. Requires stack definitions (similar to docker-compose), per-component health probes, and fault targeting by service name.
 
 ## Known Limitations
