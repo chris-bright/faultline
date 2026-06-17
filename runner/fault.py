@@ -162,10 +162,42 @@ class FaultInjector:
 
     def _inject_latency_injection(self, fault: dict):
         ms = fault.get("ms", 500)
-        return self._exec_netns(f"tc qdisc add dev eth0 root netem delay {ms}ms")
+        jitter = fault.get("jitter_ms")
+        cmd = f"tc qdisc add dev eth0 root netem delay {ms}ms"
+        if jitter:
+            cmd += f" {jitter}ms distribution normal"
+        return self._exec_netns(cmd)
 
     def _recover_latency_injection(self, fault: dict):
         self._exec_netns("tc qdisc del dev eth0 root 2>/dev/null || true")
+
+    def _inject_disk_io_stress(self, fault: dict):
+        workers = fault.get("workers", 2)
+        duration = fault.get("duration_seconds", 30)
+        if self._host_mode:
+            subprocess.Popen(["stress-ng", "--iomix", str(workers), "--timeout", f"{duration}s"])
+            return 0
+        self._require_tool("stress-ng")
+        return self._exec_target(f"cd /tmp && stress-ng --iomix {workers} --timeout {duration}s &")
+
+    def _recover_disk_io_stress(self, fault: dict):
+        if self._host_mode:
+            subprocess.run(["pkill", "stress-ng"], capture_output=True)
+        else:
+            self._exec_target("pkill stress-ng || true")
+
+    def _inject_ip_blackhole(self, fault: dict):
+        cidr = fault.get("cidr")
+        if not cidr:
+            raise ValueError("ip_blackhole fault requires a 'cidr' field (e.g. '169.254.169.254/32')")
+        return self._exec_netns(
+            f"iptables -I OUTPUT -d {cidr} -j DROP"
+        )
+
+    def _recover_ip_blackhole(self, fault: dict):
+        cidr = fault.get("cidr")
+        if cidr:
+            self._exec_netns(f"iptables -D OUTPUT -d {cidr} -j DROP 2>/dev/null || true")
 
     # --- Container ---
 

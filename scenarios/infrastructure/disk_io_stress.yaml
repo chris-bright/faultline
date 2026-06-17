@@ -1,0 +1,16 @@
+name: disk_io_stress
+domain: infrastructure
+description: Saturate disk I/O with mixed read/write load and measure service impact
+
+fault:
+  type: disk_io_stress
+  workers: 2
+  duration_seconds: 30
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+compliance_tags:
+  - infra.resource_exhaustion
+  - infra.availability

@@ -1,0 +1,15 @@
+name: ip_blackhole
+domain: infrastructure
+description: Block traffic to a specific IP or CIDR and verify the service handles the dependency failure gracefully
+
+fault:
+  type: ip_blackhole
+  cidr: 169.254.169.254/32  # cloud metadata service — swap for your dependency's IP
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+compliance_tags:
+  - infra.network_resilience
+  - infra.dependency_isolation

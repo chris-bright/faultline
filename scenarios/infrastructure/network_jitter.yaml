@@ -1,0 +1,16 @@
+name: network_jitter
+domain: infrastructure
+description: Inject 100ms latency with 30ms jitter (normal distribution) and measure impact on latency percentiles
+
+fault:
+  type: latency_injection
+  ms: 100
+  jitter_ms: 30
+
+baseline_seconds: 10
+observation_seconds: 30
+recovery_seconds: 15
+
+compliance_tags:
+  - infra.network_resilience
+  - infra.availability
