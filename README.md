@@ -187,6 +187,8 @@ faultline/
 
 **Monitor-triggered fault replay** — when a Datadog monitor fires, Faultline can match the alert pattern against its fault library and automatically replay the corresponding scenario against a staging or canary target. This closes the loop between observability and chaos: production anomaly detected → fault reproduced in a safe environment → results submitted back to Datadog confirming whether the fault type matches the observed behaviour. Enables incident validation (reproduce before you dig), fix verification (replay the fault that caused the incident after a fix is deployed), and automatic regression testing (confirm recent deploys haven't reintroduced known failure conditions). Requires a Faultline API layer for Datadog webhook delivery and a monitor-to-scenario mapping configuration.
 
+**Custom workload probing** — the current health probe is a binary pass/fail check. Supporting named workload commands per target (e.g. `redis-cli SET`, an authenticated API call, a DB query) that Faultline runs during the observation window to measure real workload impact rather than just liveness. Results would include per-command error rates and latency alongside the existing health probe metrics.
+
 **Multi-component stack testing** — Faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behaviour observed.
 
 ## Known Limitations

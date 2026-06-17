@@ -3,12 +3,3 @@ service: redis
 health_probe: "redis-cli PING | grep -q PONG"
 port: 6379
 process: redis-server
-
-# TODO: support custom_endpoints — named API calls with sample payloads/commands
-# that faultline can run during the observation window to measure real workload
-# impact, not just health probe status. e.g:
-#   custom_endpoints:
-#     - name: set_key
-#       cmd: "redis-cli SET faultline_test ok"
-#     - name: get_key
-#       cmd: "redis-cli GET faultline_test"
