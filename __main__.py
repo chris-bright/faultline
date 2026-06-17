@@ -1,5 +1,6 @@
 import os
 import click
+from config import load_config
 from runner.orchestrator import Orchestrator
 from reports.reporter import Reporter
 from reports.datadog import DatadogSubmitter
@@ -16,9 +17,19 @@ def cli():
 @click.option("--scenario", "-s", help="Path to a scenario YAML file")
 @click.option("--domain", "-d", type=click.Choice(["infrastructure", "code", "cloud", "container", "security"]), help="Run all scenarios in a domain")
 @click.option("--debug", is_flag=True, help="Output full sample data as JSON")
-@click.option("--no-submit", is_flag=True, help="Skip Datadog submission even if DD_API_KEY is set")
-def run(config, scenario, domain, debug, no_submit):
+@click.option("--no-submit", is_flag=True, help="Skip Datadog submission")
+@click.option("--submission-mode", type=click.Choice(["agent", "agentless"]), default=None,
+              help="Override submission mode from faultline.yaml (agent=DogStatsD, agentless=direct HTTP)")
+@click.option("--faultline-config", default="faultline.yaml", show_default=True,
+              help="Path to faultline.yaml config file")
+def run(config, scenario, domain, debug, no_submit, submission_mode, faultline_config):
     """Attach to a running container and inject faults."""
+    fl_config = load_config(faultline_config)
+
+    # CLI flags override config file
+    mode = submission_mode or fl_config.datadog.submission_mode
+    effective_debug = debug or fl_config.output.debug
+
     orchestrator = Orchestrator(config=config)
 
     if scenario:
@@ -28,22 +39,43 @@ def run(config, scenario, domain, debug, no_submit):
     else:
         raise click.UsageError("Provide --scenario or --domain")
 
-    reporter = Reporter(debug=debug)
+    reporter = Reporter(debug=effective_debug, results_dir=fl_config.output.results_dir)
     reporter.render(results)
 
-    if not no_submit and os.environ.get("DD_API_KEY"):
-        import json
-        from datetime import datetime
+    if no_submit:
+        return
+
+    has_api_key = bool(os.environ.get("DD_API_KEY"))
+
+    if mode == "agent":
+        from datetime import datetime, timezone
         if isinstance(results, dict):
             results = [results]
         payload = {
-            "run_at": datetime.utcnow().isoformat() + "Z",
+            "run_at": datetime.now(timezone.utc).isoformat(),
             "scenarios": results,
         }
-        DatadogSubmitter().submit(payload)
-    elif not no_submit and not os.environ.get("DD_API_KEY"):
-        from rich.console import Console
-        Console().print("[dim]DD_API_KEY not set — skipping Datadog submission[/dim]")
+        DatadogSubmitter(
+            mode="agent",
+            agent_host=fl_config.datadog.agent_host,
+            agent_port=fl_config.datadog.agent_port,
+        ).submit(payload)
+    elif mode == "agentless":
+        if not has_api_key:
+            from rich.console import Console
+            Console().print("[dim]DD_API_KEY not set — skipping Datadog submission[/dim]")
+            return
+        from datetime import datetime, timezone
+        if isinstance(results, dict):
+            results = [results]
+        payload = {
+            "run_at": datetime.now(timezone.utc).isoformat(),
+            "scenarios": results,
+        }
+        DatadogSubmitter(
+            mode="agentless",
+            site=fl_config.datadog.site,
+        ).submit(payload)
 
 
 if __name__ == "__main__":

@@ -10,14 +10,15 @@ from rich import box
 
 console = Console()
 
-RESULTS_DIR = Path(tempfile.gettempdir()) / "faultline"
+DEFAULT_RESULTS_DIR = Path(tempfile.gettempdir()) / "faultline"
 MAX_RESULTS = 12
 HISTOGRAM_WIDTH = 30
 
 
 class Reporter:
-    def __init__(self, debug: bool = False):
+    def __init__(self, debug: bool = False, results_dir: str = None):
         self.debug = debug
+        self.results_dir = Path(results_dir) if results_dir else DEFAULT_RESULTS_DIR
 
     def render(self, results):
         if isinstance(results, dict):
@@ -114,14 +115,14 @@ class Reporter:
         console.print(syntax)
 
     def _save(self, payload: dict):
-        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.results_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = RESULTS_DIR / f"run_{ts}.json"
+        out_path = self.results_dir / f"run_{ts}.json"
         out_path.write_text(json.dumps(payload, indent=2))
         console.print(f"\n[dim]Results saved: {out_path}[/dim]")
         self._rotate()
 
     def _rotate(self):
-        files = sorted(RESULTS_DIR.glob("run_*.json"))
+        files = sorted(self.results_dir.glob("run_*.json"))
         for old in files[:-MAX_RESULTS]:
             old.unlink()

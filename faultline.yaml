@@ -1,0 +1,9 @@
+datadog:
+  submission_mode: agentless   # agent (DogStatsD → localhost) | agentless (direct HTTP)
+  site: datadoghq.com          # datadoghq.com | datadoghq.eu | us3.datadoghq.com | etc.
+  agent_host: localhost        # DogStatsD host (agent mode only)
+  agent_port: 8125             # DogStatsD port (agent mode only)
+
+output:
+  debug: false                 # print full sample JSON after each scenario
+  results_dir: /tmp/faultline  # where JSON result files are written
