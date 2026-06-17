@@ -18,6 +18,7 @@ class Orchestrator:
         self.container_name = self.target_config.get("container")
         if not self.container_name:
             raise ValueError(f"target.yaml must specify 'container' — the name of the running container to attach to")
+        self.service = self.target_config.get("service", self.container_name)
         self.health_probe = self.target_config.get("health_probe")
         self.health_path = self.target_config.get("health_path")
         self.health_port = self.target_config.get("port", 8080)
@@ -81,6 +82,7 @@ class Orchestrator:
                     "domain": scenario.get("domain"),
                     "fault_type": scenario["fault"]["type"],
                     "target": self.container_name,
+                    "service": self.service,
                     "skipped": True,
                     "metrics": {},
                     "compliance_tags": scenario.get("compliance_tags", []),
@@ -101,6 +103,7 @@ class Orchestrator:
                 "domain": scenario.get("domain"),
                 "fault_type": scenario["fault"]["type"],
                 "target": self.container_name,
+                "service": self.service,
                 "metrics": metrics,
                 "compliance_tags": scenario.get("compliance_tags", []),
             }

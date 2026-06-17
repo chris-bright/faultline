@@ -1,14 +1,30 @@
 services:
 
+  # Datadog Agent — required for APM trace collection and agent-mode metric submission
+  dd-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: dd-agent
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    ports:
+      - "8126:8126"    # APM trace receiver
+      - "8125:8125/udp" # DogStatsD
+
   my-app:
     build: targets/my-app
     container_name: my-app      # must match container: in targets/my-app/target.yaml
     ports:
       - "8080:8080"
-
-  # add additional targets as needed
-  # my-db:
-  #   image: postgres:16
-  #   container_name: my-db
-  #   ports:
-  #     - "5432:5432"
+    environment:
+      - DD_SERVICE=my-app       # must match service: in targets/my-app/target.yaml
+      - DD_ENV=dev
+      - DD_AGENT_HOST=dd-agent
+      - DD_TRACE_AGENT_PORT=8126
+    depends_on:
+      - dd-agent

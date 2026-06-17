@@ -1,4 +1,5 @@
 container: redis
+service: redis
 health_probe: "redis-cli PING | grep -q PONG"
 port: 6379
 process: redis-server

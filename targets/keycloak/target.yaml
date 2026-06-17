@@ -1,4 +1,5 @@
 container: keycloak
+service: keycloak
 health_probe: "grep -q 'State:.*[RS]' /proc/1/status"
 port: 8080
 process: java

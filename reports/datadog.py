@@ -58,6 +58,7 @@ class DatadogSubmitter:
             f"domain:{scenario.get('domain', 'unknown')}",
             f"fault_type:{scenario['fault_type']}",
             f"target:{scenario.get('target', 'unknown')}",
+            f"service:{scenario.get('service', scenario.get('target', 'unknown'))}",
             f"skipped:{'true' if scenario.get('skipped') else 'false'}",
         ]
         for ct in scenario.get("compliance_tags", []):
