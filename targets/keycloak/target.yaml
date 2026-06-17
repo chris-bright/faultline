@@ -4,7 +4,6 @@ health_probe: "grep -q 'State:.*[RS]' /proc/1/status"
 port: 8080
 process: java
 
-# Keycloak uses ubi9-micro base with no package manager — tools cannot be installed
-# Health probe uses /proc/1/status (no curl/wget available)
-# DNS blackhole and time travel are the primary fault scenarios for this target
-# stress-ng, iptables, tc not available — network/resource fault scenarios unsupported
+# Keycloak uses ubi9-micro base — no tools in the target image, which is fine.
+# faultline injects faults via nsenter from its own container (run via faultline.sh).
+# Health probe uses /proc/1/status since curl is not available in ubi9-micro.
