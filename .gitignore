@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+docker-compose.yaml
 
 # targets/ is customer-specific — only the reference examples are tracked
 targets/*/
