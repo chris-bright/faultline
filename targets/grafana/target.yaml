@@ -1,4 +1,4 @@
+container: grafana
 health_path: /api/health
 port: 3000
-mem_limit: 512m
 process: grafana

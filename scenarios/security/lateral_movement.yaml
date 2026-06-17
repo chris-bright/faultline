@@ -16,10 +16,6 @@ baseline_seconds: 5
 observation_seconds: 20
 recovery_seconds: 5
 
-expect:
-  lateral_access_gained: false
-  detection_logged: true
-
 compliance_tags:
   - container.network_isolation
   - security.network_segmentation

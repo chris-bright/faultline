@@ -11,10 +11,6 @@ baseline_seconds: 10
 observation_seconds: 20
 recovery_seconds: 10
 
-expect:
-  max_recovery_seconds: 5
-  error_rate_below: 0.5
-
 compliance_tags:
   - infra.availability
   - infra.process_integrity

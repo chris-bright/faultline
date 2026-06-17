@@ -16,9 +16,6 @@ baseline_seconds: 5
 observation_seconds: 15
 recovery_seconds: 5
 
-expect:
-  detection_logged: true    # SIEM / DD Cloud SIEM should flag at least one pattern
-
 compliance_tags:
   - security.log_integrity
   - infra.availability

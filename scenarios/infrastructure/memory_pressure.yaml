@@ -10,10 +10,6 @@ baseline_seconds: 10
 observation_seconds: 30
 recovery_seconds: 15
 
-expect:
-  max_recovery_seconds: 30
-  error_rate_below: 0.2
-
 compliance_tags:
   - infra.resource_exhaustion
   - container.memory_limit

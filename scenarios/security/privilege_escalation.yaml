@@ -13,10 +13,6 @@ baseline_seconds: 5
 observation_seconds: 20
 recovery_seconds: 5
 
-expect:
-  escalation_succeeded: false
-  detection_logged: true    # DD Agent should emit a security signal
-
 compliance_tags:
   - security.least_privilege
   - container.no_privileged

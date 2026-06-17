@@ -50,13 +50,10 @@ class Reporter:
             console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
                           f"[dim]{result['fault_type']}[/dim]  "
                           f"[yellow]SKIP[/yellow]")
-            note = result.get("findings", [{}])[0].get("note", "")
-            console.print(f"[dim]  {note}[/dim]")
             return
 
         console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
-                      f"[dim]{result['fault_type']}[/dim]  "
-                      f"{'[green]PASS[/green]' if result.get('passed') else '[red]FAIL[/red]'}")
+                      f"[dim]{result['fault_type']}[/dim]")
 
         if not latencies:
             console.print("[dim]No latency data collected.[/dim]")

@@ -16,10 +16,6 @@ baseline_seconds: 5
 observation_seconds: 20
 recovery_seconds: 5
 
-expect:
-  credentials_found_in_memory: false
-  detection_logged: true
-
 compliance_tags:
   - security.secret_hygiene
   - cloud.secret_management

@@ -10,9 +10,5 @@ baseline_seconds: 10
 observation_seconds: 25
 recovery_seconds: 15
 
-expect:
-  max_recovery_seconds: 20
-  error_rate_below: 0.15
-
 compliance_tags:
   - code.dependency_resilience

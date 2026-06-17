@@ -17,4 +17,5 @@ docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(pwd)/targets:/app/targets:ro" \
   -v "$(pwd)/scenarios:/app/scenarios:ro" \
+  -v "/tmp/faultline:/tmp/faultline" \
   "$IMAGE" "$@"

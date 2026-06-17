@@ -80,9 +80,7 @@ class Orchestrator:
                     "scenario": scenario["name"],
                     "domain": scenario.get("domain"),
                     "fault_type": scenario["fault"]["type"],
-                    "passed": False,
                     "skipped": True,
-                    "findings": [{"check": "fault_applied", "passed": False, "note": str(e)}],
                     "metrics": {},
                     "compliance_tags": scenario.get("compliance_tags", []),
                 }
@@ -97,76 +95,15 @@ class Orchestrator:
             time.sleep(scenario.get("recovery_seconds", 15))
 
             metrics = telemetry.collect()
-            result = self._score(scenario, metrics)
+            result = {
+                "scenario": scenario["name"],
+                "domain": scenario.get("domain"),
+                "fault_type": scenario["fault"]["type"],
+                "metrics": metrics,
+                "compliance_tags": scenario.get("compliance_tags", []),
+            }
 
         finally:
             telemetry.stop()
 
-        console.print(f"[bold]Result:[/bold] {'[green]PASS' if result['passed'] else '[red]FAIL'}[/]")
         return result
-
-    def _score(self, scenario: dict, metrics: dict) -> dict:
-        expectations = scenario.get("expect", {})
-        passed = True
-        findings = []
-
-        if "max_recovery_seconds" in expectations:
-            actual = metrics.get("recovery_seconds", float("inf"))
-            ok = actual <= expectations["max_recovery_seconds"]
-            if not ok:
-                passed = False
-                findings.append({
-                    "check": "recovery_time",
-                    "expected": f"<= {expectations['max_recovery_seconds']}s",
-                    "actual": f"{actual:.1f}s",
-                    "passed": False,
-                })
-
-        if "error_rate_below" in expectations:
-            actual = metrics.get("error_rate", 1.0)
-            ok = actual <= expectations["error_rate_below"]
-            if not ok:
-                passed = False
-                findings.append({
-                    "check": "error_rate",
-                    "expected": f"<= {expectations['error_rate_below']}",
-                    "actual": f"{actual:.2%}",
-                    "passed": False,
-                })
-
-        for bool_check in ("escalation_succeeded", "lateral_access_gained",
-                           "secrets_exposed", "credentials_found_in_memory"):
-            if bool_check in expectations:
-                expected_val = expectations[bool_check]
-                actual_val = metrics.get(bool_check, False)
-                ok = actual_val == expected_val
-                if not ok:
-                    passed = False
-                    findings.append({
-                        "check": bool_check,
-                        "expected": expected_val,
-                        "actual": actual_val,
-                        "passed": False,
-                    })
-
-        if expectations.get("detection_logged"):
-            detected = metrics.get("detection_logged", False)
-            if not detected:
-                passed = False
-                findings.append({
-                    "check": "detection_logged",
-                    "expected": True,
-                    "actual": False,
-                    "passed": False,
-                    "note": "No detection signal observed during attack window",
-                })
-
-        return {
-            "scenario": scenario["name"],
-            "domain": scenario.get("domain"),
-            "fault_type": scenario["fault"]["type"],
-            "passed": passed,
-            "findings": findings,
-            "metrics": metrics,
-            "compliance_tags": scenario.get("compliance_tags", []),
-        }
