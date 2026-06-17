@@ -116,34 +116,48 @@ Each scenario run submits:
 - Fault inject event (`info`) — fired at injection time, includes compliance tags
 - Recovery event (`success`) — fired at recovery time, includes error rate, avg/p99 latency
 
+## Architecture
+
+faultline is built in four layers:
+
+**Container runtime abstraction** (`runner/runtime.py`) — a `ContainerRuntime` interface with a `DockerRuntime` implementation. All container operations (attach, exec, get PID, pause/unpause, kill) go through this interface, keeping the rest of the codebase containerizer-agnostic. `PodmanRuntime` and `KubernetesRuntime` stubs exist for future implementation.
+
+**Fault injection** (`runner/fault.py`) — the `FaultInjector` uses `nsenter` to enter the target container's Linux namespaces from the host, injecting faults at the OS level without touching the target image. This means targets need no tools installed — `tc`, `stress-ng`, and `iptables` run in faultline's own container against the target's namespaces. Falls back to `docker exec` for scenarios that don't require host-level access. Raises `FaultNotApplied` if a required tool is missing, producing a clean `SKIP` result rather than a false pass.
+
+**Telemetry** (`runner/telemetry.py`) — polls the target's health probe once per second throughout the scenario (baseline → fault → recovery). Captures probe latency, error rate, p95/p99, and time-to-recovery. The health probe is configurable per target: explicit shell command, HTTP path, process name, or TCP port check.
+
+**Submission** (`reports/`) — `reporter.py` renders a stdout histogram and saves a JSON file. `datadog.py` submits metrics and events to Datadog via either DogStatsD (agent mode, no outbound required) or direct HTTP (agentless mode). Events are annotated on APM traces and dashboards at the exact fault injection and recovery timestamps.
+
+The `orchestrator.py` ties these together: pre-flight check → baseline collection → fault injection → observation → recovery → telemetry harvest → report + submit.
+
 ## Project Structure
 
 ```
 faultline/
-├── faultline.yaml      # config (submission mode, DD site, output dir)
-├── faultline.sh        # Docker launch script with required capabilities
-├── scenarios/          # YAML fault scenario definitions
+├── faultline.yaml              # config (submission mode, DD site, output dir)
+├── faultline.sh                # Docker launch script with required capabilities
+├── scenarios/                  # YAML fault scenario definitions
 │   ├── infrastructure/
 │   ├── code/
 │   ├── cloud/
 │   ├── container/
 │   └── security/
-├── targets/            # Reference targets (bring your own)
+├── targets/                    # Reference targets (bring your own)
 │   ├── simple_api/
 │   ├── redis/
 │   ├── grafana/
 │   └── keycloak/
 ├── runner/
-│   ├── runtime.py      # ContainerRuntime interface + DockerRuntime
-│   ├── sandbox.py      # Attaches to a running container via the runtime
-│   ├── fault.py        # Fault injection (nsenter host-level + exec fallback)
-│   ├── telemetry.py    # Health polling during scenario runs
-│   └── orchestrator.py # Scenario execution
+│   ├── runtime.py              # ContainerRuntime interface + DockerRuntime
+│   ├── sandbox.py              # Attaches to a running container via the runtime
+│   ├── fault.py                # Fault injection (nsenter host-level + exec fallback)
+│   ├── telemetry.py            # Health polling during scenario runs
+│   └── orchestrator.py         # Scenario execution
 ├── reports/
-│   ├── reporter.py     # stdout histogram + JSON file output
-│   └── datadog.py      # Datadog metrics and events submission
-├── config.py           # faultline.yaml loader
-└── Dockerfile          # faultline agent image (tc, iptables, stress-ng included)
+│   ├── reporter.py             # stdout histogram + JSON file output
+│   └── datadog.py              # Datadog metrics and events submission
+├── config.py                   # faultline.yaml loader
+└── Dockerfile                  # faultline agent image (tc, iptables, stress-ng included)
 ```
 
 ## Requirements
