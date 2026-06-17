@@ -1,24 +1,24 @@
-# faultline
+# Faultline
 
 Fault injection agent for containerized services. Attaches to running containers via the Docker socket, injects controlled faults, collects telemetry, and ships results to Datadog as metrics and events.
 
-> **Security note:** faultline runs with `--pid=host` and elevated Linux capabilities (`CAP_NET_ADMIN`, `CAP_SYS_PTRACE`, `CAP_SYS_ADMIN`) to inject faults at the host level without modifying target container images. Only run it in environments you control.
+> **Security note:** Faultline runs with `--pid=host` and elevated Linux capabilities (`CAP_NET_ADMIN`, `CAP_SYS_PTRACE`, `CAP_SYS_ADMIN`) to inject faults at the host level without modifying target container images. Only run it in environments you control.
 
-> **Airgap note:** faultline does not manage the network — if you want an isolated test environment, run your target in an internal Docker network yourself.
+> **Airgap note:** Faultline does not manage the network — if you want an isolated test environment, run your target in an internal Docker network yourself.
 
 ## What it does
 
-Most observability tooling answers the question: *what is my system doing right now?* faultline answers a different question: *what happens to my system when things go wrong?*
+Most observability tooling answers the question: *what is my system doing right now?* Faultline answers a different question: *what happens to my system when things go wrong?*
 
 It works by attaching to a running container, injecting a controlled fault — CPU saturation, packet loss, a killed dependency, a blocked IP — then measuring how the service behaves during and after the failure. Did error rates spike? Did latency blow out? Did it recover, and how quickly? Those results are shipped directly into Datadog as custom metrics and events, where they sit alongside the rest of your observability data.
 
-The key difference from other chaos engineering tools is the native Datadog integration. When a fault is injected, faultline posts a timestamped event to Datadog that appears as an annotation directly on your APM traces and dashboards. If your service is already instrumented with Datadog APM, you can see exactly which spans, functions, and downstream calls broke during the fault window — without switching tools or correlating data manually.
+The key difference from other chaos engineering tools is the native Datadog integration. When a fault is injected, Faultline posts a timestamped event to Datadog that appears as an annotation directly on your APM traces and dashboards. If your service is already instrumented with Datadog APM, you can see exactly which spans, functions, and downstream calls broke during the fault window — without switching tools or correlating data manually.
 
 **Why this fits Datadog's product portfolio:**
 
-Datadog already owns the observability layer — metrics, traces, logs, synthetics, and alerting. What it doesn't have is a way to validate that the system *under failure* behaves as the observability data implies it should. faultline closes that gap. Where Synthetics tests normal behaviour on a schedule, faultline tests failure behaviour on demand. The results land in the same place, use the same tags, and show up on the same dashboards — making resilience testing a first-class part of the Datadog workflow rather than a separate process.
+Datadog already owns the observability layer — metrics, traces, logs, synthetics, and alerting. What it doesn't have is a way to validate that the system *under failure* behaves as the observability data implies it should. Faultline closes that gap. Where Synthetics tests normal behaviour on a schedule, Faultline tests failure behaviour on demand. The results land in the same place, use the same tags, and show up on the same dashboards — making resilience testing a first-class part of the Datadog workflow rather than a separate process.
 
-Teams that adopt faultline as part of their pre-production sign-off get a quantified answer to "does this service meet its SLO under failure conditions?" — and that answer lives in Datadog next to everything else.
+Teams that adopt Faultline as part of their pre-production sign-off get a quantified answer to "does this service meet its SLO under failure conditions?" — and that answer lives in Datadog next to everything else.
 
 ## Concept
 
@@ -26,7 +26,7 @@ Teams that adopt faultline as part of their pre-production sign-off get a quanti
 target.yaml → attach to running container → fault injection → telemetry → JSON + Datadog metrics/events
 ```
 
-No evaluation layer — faultline surfaces raw metrics only. Thresholds and alerting live in Datadog.
+No evaluation layer — Faultline surfaces raw metrics only. Thresholds and alerting live in Datadog.
 
 ## Fault Domains
 
@@ -63,7 +63,7 @@ Results are saved to `results_dir` (default `/tmp/faultline/`, last 12 runs kept
 
 ## Configuration
 
-faultline is configured via `faultline.yaml` in the working directory. CLI flags override config file values.
+Faultline is configured via `faultline.yaml` in the working directory. CLI flags override config file values.
 
 ```yaml
 datadog:
@@ -79,7 +79,7 @@ output:
 
 **Submission modes:**
 - `agentless` — POSTs directly to the Datadog API. Requires `DD_API_KEY` env var and outbound connectivity to `*.datadoghq.com`.
-- `agent` — sends via DogStatsD to a local Datadog Agent on `agent_host:agent_port`. No outbound connectivity required from faultline itself; the agent handles forwarding.
+- `agent` — sends via DogStatsD to a local Datadog Agent on `agent_host:agent_port`. No outbound connectivity required from Faultline itself; the agent handles forwarding.
 
 `DD_API_KEY` is always read from the environment — never put it in `faultline.yaml`.
 
@@ -96,7 +96,7 @@ process: python         # process name for /proc state check (fallback)
 
 Health probe priority: `health_probe` (explicit shell command) → HTTP `health_path` → `/proc/<pid>/status` state → `nc -z port`
 
-faultline runs a pre-flight health check before each scenario. If the container is already unhealthy the scenario aborts rather than producing misleading results.
+Faultline runs a pre-flight health check before each scenario. If the container is already unhealthy the scenario aborts rather than producing misleading results.
 
 Scenarios are skipped with a `SKIP` result if a required tool (`tc`, `stress-ng`, `iptables`) is not available in the target — no false passes.
 
@@ -113,13 +113,13 @@ docker compose build keycloak     # rebuild a specific image
 | `simple_api` | 8080 | Python Flask API, full tool set installed |
 | `redis` | 6379 | Redis with stress/network tools added |
 | `grafana` | 3000 | Grafana with stress/network tools added |
-| `keycloak` | 8081 | Keycloak on ubi9-micro — no package manager, most fault types skip |
+| `keycloak` | 8081 | Keycloak on ubi9-micro — faultline.sh required for host-level injection |
 
 ## Datadog Integration
 
 Each scenario run submits:
 
-**Metrics** (tagged `scenario`, `domain`, `fault_type`, `target`, `skipped`, `compliance`):
+**Metrics** (tagged `scenario`, `domain`, `fault_type`, `target`, `service`, `skipped`, `compliance`):
 - `faultline.execution` — count, emitted for every run including skips
 - `faultline.error_rate` — fraction of health probe failures during fault window
 - `faultline.avg_latency_ms`, `faultline.p95_latency_ms`, `faultline.p99_latency_ms`
@@ -132,11 +132,11 @@ Each scenario run submits:
 
 ## Architecture
 
-faultline is built in four layers:
+Faultline is built in four layers:
 
 **Container runtime abstraction** (`runner/runtime.py`) — a `ContainerRuntime` interface with a `DockerRuntime` implementation. All container operations (attach, exec, get PID, pause/unpause, kill) go through this interface, keeping the rest of the codebase containerizer-agnostic. `PodmanRuntime` and `KubernetesRuntime` stubs exist for future implementation.
 
-**Fault injection** (`runner/fault.py`) — the `FaultInjector` uses `nsenter` to enter the target container's Linux namespaces from the host, injecting faults at the OS level without touching the target image. This means targets need no tools installed — `tc`, `stress-ng`, and `iptables` run in faultline's own container against the target's namespaces. Falls back to `docker exec` for scenarios that don't require host-level access. Raises `FaultNotApplied` if a required tool is missing, producing a clean `SKIP` result rather than a false pass.
+**Fault injection** (`runner/fault.py`) — the `FaultInjector` uses `nsenter` to enter the target container's Linux namespaces from the host, injecting faults at the OS level without touching the target image. This means targets need no tools installed — `tc`, `stress-ng`, and `iptables` run in Faultline's own container against the target's namespaces. Falls back to `docker exec` for scenarios that don't require host-level access. Raises `FaultNotApplied` if a required tool is missing, producing a clean `SKIP` result rather than a false pass.
 
 **Telemetry** (`runner/telemetry.py`) — polls the target's health probe once per second throughout the scenario (baseline → fault → recovery). Captures probe latency, error rate, p95/p99, and time-to-recovery. The health probe is configurable per target: explicit shell command, HTTP path, process name, or TCP port check.
 
@@ -171,7 +171,7 @@ faultline/
 │   ├── reporter.py             # stdout histogram + JSON file output
 │   └── datadog.py              # Datadog metrics and events submission
 ├── config.py                   # faultline.yaml loader
-└── Dockerfile                  # faultline agent image (tc, iptables, stress-ng included)
+└── Dockerfile                  # Faultline agent image (tc, iptables, stress-ng included)
 ```
 
 ## Requirements
@@ -181,13 +181,13 @@ faultline/
 
 ## Roadmap
 
-**GitHub integration + scheduled runs** — link a GitHub repo and point faultline at a deployment Dockerfile or Terraform config. On each push (or on a schedule), faultline pulls the latest config, spins up the target, runs the fault suite, and ships results to Datadog. Gives you continuous resilience regression testing alongside your existing CI pipeline.
+**GitHub integration + scheduled runs** — link a GitHub repo and point Faultline at a deployment Dockerfile or Terraform config. On each push (or on a schedule), Faultline pulls the latest config, spins up the target, runs the fault suite, and ships results to Datadog. Gives you continuous resilience regression testing alongside your existing CI pipeline.
 
-**Kubernetes support** — the `ContainerRuntime` interface is the right seam for this. Requires a DaemonSet deployment model: faultline agent pods run on every node with `hostPID: true`, exposing a local HTTP API that accepts fault commands and executes them via `nsenter`. A controller routes requests to the correct node agent after resolving which node the target pod lives on via the k8s API. `KubernetesRuntime` implements the interface by posting to the agent HTTP API instead of calling Docker SDK directly. The gaps vs Docker: no native pause/unpause (workaround: scale replicas to 0/1), and `get_pid()` requires the DaemonSet pod to be co-located with the target.
+**Kubernetes support** — the `ContainerRuntime` interface is the right seam for this. Requires a DaemonSet deployment model: Faultline agent pods run on every node with `hostPID: true`, exposing a local HTTP API that accepts fault commands and executes them via `nsenter`. A controller routes requests to the correct node agent after resolving which node the target pod lives on via the k8s API. `KubernetesRuntime` implements the interface by posting to the agent HTTP API instead of calling Docker SDK directly. The gaps vs Docker: no native pause/unpause (workaround: scale replicas to 0/1), and `get_pid()` requires the DaemonSet pod to be co-located with the target.
 
-**Monitor-triggered fault replay** — when a Datadog monitor fires, faultline can match the alert pattern against its fault library and automatically replay the corresponding scenario against a staging or canary target. This closes the loop between observability and chaos: production anomaly detected → fault reproduced in a safe environment → results submitted back to Datadog confirming whether the fault type matches the observed behaviour. Enables incident validation (reproduce before you dig), fix verification (replay the fault that caused the incident after a fix is deployed), and automatic regression testing (confirm recent deploys haven't reintroduced known failure conditions). Requires a faultline API layer for Datadog webhook delivery and a monitor-to-scenario mapping configuration.
+**Monitor-triggered fault replay** — when a Datadog monitor fires, Faultline can match the alert pattern against its fault library and automatically replay the corresponding scenario against a staging or canary target. This closes the loop between observability and chaos: production anomaly detected → fault reproduced in a safe environment → results submitted back to Datadog confirming whether the fault type matches the observed behaviour. Enables incident validation (reproduce before you dig), fix verification (replay the fault that caused the incident after a fix is deployed), and automatic regression testing (confirm recent deploys haven't reintroduced known failure conditions). Requires a Faultline API layer for Datadog webhook delivery and a monitor-to-scenario mapping configuration.
 
-**Multi-component stack testing** — faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behaviour observed.
+**Multi-component stack testing** — Faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behaviour observed.
 
 ## Known Limitations
 
