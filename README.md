@@ -185,6 +185,8 @@ faultline/
 
 **Kubernetes support** — the `ContainerRuntime` interface is the right seam for this. Requires a DaemonSet deployment model: faultline agent pods run on every node with `hostPID: true`, exposing a local HTTP API that accepts fault commands and executes them via `nsenter`. A controller routes requests to the correct node agent after resolving which node the target pod lives on via the k8s API. `KubernetesRuntime` implements the interface by posting to the agent HTTP API instead of calling Docker SDK directly. The gaps vs Docker: no native pause/unpause (workaround: scale replicas to 0/1), and `get_pid()` requires the DaemonSet pod to be co-located with the target.
 
+**Monitor-triggered fault replay** — when a Datadog monitor fires, faultline can match the alert pattern against its fault library and automatically replay the corresponding scenario against a staging or canary target. This closes the loop between observability and chaos: production anomaly detected → fault reproduced in a safe environment → results submitted back to Datadog confirming whether the fault type matches the observed behaviour. Enables incident validation (reproduce before you dig), fix verification (replay the fault that caused the incident after a fix is deployed), and automatic regression testing (confirm recent deploys haven't reintroduced known failure conditions). Requires a faultline API layer for Datadog webhook delivery and a monitor-to-scenario mapping configuration.
+
 **Multi-component stack testing** — faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behaviour observed.
 
 ## Known Limitations
