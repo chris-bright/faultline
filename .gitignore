@@ -2,7 +2,13 @@ __pycache__/
 *.pyc
 .venv/
 
-# targets/ is customer-specific — only the reference example is tracked
+# targets/ is customer-specific — only the reference examples are tracked
 targets/*/
 !targets/simple_api/
 !targets/simple_api/**
+!targets/keycloak/
+!targets/keycloak/**
+!targets/redis/
+!targets/redis/**
+!targets/grafana/
+!targets/grafana/**
