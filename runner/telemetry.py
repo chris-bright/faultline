@@ -63,8 +63,11 @@ class TelemetryCollector:
         errors = sum(1 for s in self._samples if not s["ok"])
         error_rate = errors / total if total else 0
 
-        latencies = [s["latency_ms"] for s in self._samples if s["ok"] and s["latency_ms"] is not None]
-        avg_latency = sum(latencies) / len(latencies) if latencies else None
+        latencies = sorted([s["latency_ms"] for s in self._samples if s["ok"] and s["latency_ms"] is not None])
+        n_lat = len(latencies)
+        avg_latency = sum(latencies) / n_lat if latencies else None
+        p95 = latencies[int(n_lat * 0.95)] if latencies else None
+        p99 = latencies[min(int(n_lat * 0.99), n_lat - 1)] if latencies else None
 
         recovery_seconds = float("inf")
         if self._fault_injected_at:
@@ -79,7 +82,10 @@ class TelemetryCollector:
             "total_samples": total,
             "error_rate": error_rate,
             "avg_latency_ms": avg_latency,
+            "p95_latency_ms": p95,
+            "p99_latency_ms": p99,
             "recovery_seconds": recovery_seconds,
+            "fault_injected_at": self._fault_injected_at,
             "samples": self._samples,
         }
 

@@ -80,6 +80,7 @@ class Orchestrator:
                     "scenario": scenario["name"],
                     "domain": scenario.get("domain"),
                     "fault_type": scenario["fault"]["type"],
+                    "target": self.container_name,
                     "skipped": True,
                     "metrics": {},
                     "compliance_tags": scenario.get("compliance_tags", []),
@@ -99,6 +100,7 @@ class Orchestrator:
                 "scenario": scenario["name"],
                 "domain": scenario.get("domain"),
                 "fault_type": scenario["fault"]["type"],
+                "target": self.container_name,
                 "metrics": metrics,
                 "compliance_tags": scenario.get("compliance_tags", []),
             }
