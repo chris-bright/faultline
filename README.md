@@ -6,6 +6,20 @@ Fault injection agent for containerized services. Attaches to running containers
 
 > **Airgap note:** faultline does not manage the network — if you want an isolated test environment, run your target in an internal Docker network yourself.
 
+## What it does
+
+Most observability tooling answers the question: *what is my system doing right now?* faultline answers a different question: *what happens to my system when things go wrong?*
+
+It works by attaching to a running container, injecting a controlled fault — CPU saturation, packet loss, a killed dependency, a blocked IP — then measuring how the service behaves during and after the failure. Did error rates spike? Did latency blow out? Did it recover, and how quickly? Those results are shipped directly into Datadog as custom metrics and events, where they sit alongside the rest of your observability data.
+
+The key difference from other chaos engineering tools is the native Datadog integration. When a fault is injected, faultline posts a timestamped event to Datadog that appears as an annotation directly on your APM traces and dashboards. If your service is already instrumented with Datadog APM, you can see exactly which spans, functions, and downstream calls broke during the fault window — without switching tools or correlating data manually.
+
+**Why this fits Datadog's product portfolio:**
+
+Datadog already owns the observability layer — metrics, traces, logs, synthetics, and alerting. What it doesn't have is a way to validate that the system *under failure* behaves as the observability data implies it should. faultline closes that gap. Where Synthetics tests normal behaviour on a schedule, faultline tests failure behaviour on demand. The results land in the same place, use the same tags, and show up on the same dashboards — making resilience testing a first-class part of the Datadog workflow rather than a separate process.
+
+Teams that adopt faultline as part of their pre-production sign-off get a quantified answer to "does this service meet its SLO under failure conditions?" — and that answer lives in Datadog next to everything else.
+
 ## Concept
 
 ```
