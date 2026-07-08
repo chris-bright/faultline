@@ -47,8 +47,15 @@ class DatadogSubmitter:
         for result in results:
             tags = self._build_tags(result)
             self._submit_metrics(result, ts, tags)
-            if not result.skipped:
-                self._submit_events(result, tags)
+
+        # Group by (run_id, scenario) — one pair of events per scenario run
+        groups: dict[tuple, list[ScenarioResult]] = {}
+        for result in results:
+            key = (result.run_id or "", result.scenario)
+            groups.setdefault(key, []).append(result)
+
+        for group in groups.values():
+            self._submit_scenario_events(group)
 
         mode_label = f"agent ({self.agent_host}:{self.agent_port})" if self.mode == "agent" else self.site
         console.print(f"[dim]Submitted to Datadog ({mode_label})[/dim]")
@@ -113,73 +120,102 @@ class DatadogSubmitter:
         if not resp.ok:
             console.print(f"[yellow]Warning: metrics submission failed ({resp.status_code}): {resp.text}[/yellow]")
 
-    def _submit_events(self, result: ScenarioResult, tags: list[str]):
-        metrics = result.metrics
-        fault_injected_at = metrics.get("fault_injected_at")
-        recovery_seconds = metrics.get("recovery_seconds")
-
-        if not fault_injected_at:
+    def _submit_scenario_events(self, group: list[ScenarioResult]):
+        rep = group[0]
+        all_skipped = all(r.skipped for r in group)
+        if all_skipped:
             return
 
-        compliance_str = ", ".join(result.compliance_tags) if result.compliance_tags else "none"
+        targets = [r.target for r in group]
+        compliance_str = ", ".join(rep.compliance_tags) if rep.compliance_tags else "none"
+        steps_str = "\n".join(f"  {s}" for s in rep.step_summary) if rep.step_summary else f"  {rep.fault_type}"
 
-        inject_text = (
-            f"Fault injection started. Observing service behaviour under {result.fault_type}.\n"
-            f"Compliance: {compliance_str}"
+        start_ts = int(rep.started_at) if rep.started_at else int(time.time())
+        scenario_tags = [
+            f"scenario:{rep.scenario}",
+            f"domain:{rep.domain or 'unknown'}",
+            f"fault_type:{rep.fault_type}",
+        ]
+        if rep.run_id:
+            scenario_tags.append(f"run_id:{rep.run_id}")
+        for ct in rep.compliance_tags:
+            scenario_tags.append(f"compliance:{ct}")
+
+        start_text = (
+            f"%%% \n"
+            f"**Scenario:** {rep.scenario}  \n"
+            f"**Targets:** {', '.join(targets)}  \n"
+            f"**Steps:**  \n{steps_str}  \n"
+            f"**Compliance:** {compliance_str}  \n"
+            f" %%%"
         )
 
-        recovered = recovery_seconds and recovery_seconds != float("inf")
-        error_rate = metrics.get("error_rate")
-        p99 = metrics.get("p99_latency_ms")
-        avg = metrics.get("avg_latency_ms")
+        # Per-target results table
+        rows = []
+        completed_at = start_ts
+        for r in group:
+            if r.skipped:
+                rows.append(f"| {r.target} | skipped | — | — | — |")
+                continue
+            m = r.metrics
+            error_rate = f"{m['error_rate']:.1%}" if m.get("error_rate") is not None else "—"
+            avg = f"{m['avg_latency_ms']:.0f}ms" if m.get("avg_latency_ms") is not None else "—"
+            p99 = f"{m['p99_latency_ms']:.0f}ms" if m.get("p99_latency_ms") is not None else "—"
+            rec = m.get("recovery_seconds")
+            rec_str = f"{rec:.1f}s" if rec and rec != float("inf") else "—"
+            rows.append(f"| {r.target} | {error_rate} | {avg} | {p99} | {rec_str} |")
+            if m.get("fault_injected_at"):
+                completed_at = max(completed_at, int(m["fault_injected_at"]) + 60)
 
-        recovery_text_parts = [f"Service recovered in {recovery_seconds:.2f}s." if recovered else "Service did not recover within observation window."]
-        if error_rate is not None:
-            recovery_text_parts.append(f"Error rate during fault: {error_rate:.1%}")
-        if avg is not None:
-            recovery_text_parts.append(f"Avg latency: {avg:.1f}ms")
-        if p99 is not None:
-            recovery_text_parts.append(f"p99 latency: {p99:.1f}ms")
-        recovery_text = "\n".join(recovery_text_parts)
+        table = "\n".join(rows)
+        any_recovered = any(
+            r.metrics.get("recovery_seconds") not in (None, float("inf"))
+            for r in group if not r.skipped
+        )
+        alert_type = "success" if any_recovered else "warning"
+
+        complete_text = (
+            f"%%% \n"
+            f"| Target | Error Rate | Avg Latency | p99 Latency | Recovery |  \n"
+            f"|--------|-----------|-------------|-------------|----------|  \n"
+            f"{table}  \n"
+            f" %%%"
+        )
 
         if self.mode == "agent":
             self._statsd.event(
-                f"faultline: {result.fault_type} injected into {result.target}",
-                inject_text,
+                f"faultline: {rep.scenario} started",
+                start_text,
                 alert_type="info",
-                tags=tags + ["faultline:inject"],
-                date_happened=int(fault_injected_at),
+                tags=scenario_tags + ["faultline:start"],
+                date_happened=start_ts,
             )
-            if recovered:
-                self._statsd.event(
-                    f"faultline: {result.fault_type} recovered on {result.target}",
-                    recovery_text,
-                    alert_type="success",
-                    tags=tags + ["faultline:recovery"],
-                    date_happened=int(fault_injected_at + recovery_seconds),
-                )
+            self._statsd.event(
+                f"faultline: {rep.scenario} complete",
+                complete_text,
+                alert_type=alert_type,
+                tags=scenario_tags + ["faultline:complete"],
+                date_happened=completed_at,
+            )
             return
 
-        # agentless: individual HTTP POSTs
-        events = [{
-            "title": f"faultline: {result.fault_type} injected into {result.target}",
-            "text": inject_text,
-            "date_happened": int(fault_injected_at),
-            "alert_type": "info",
-            "tags": tags + ["faultline:inject"],
-        }]
-
-        if recovered:
-            events.append({
-                "title": f"faultline: {result.fault_type} recovered on {result.target}",
-                "text": recovery_text,
-                "date_happened": int(fault_injected_at + recovery_seconds),
-                "alert_type": "success",
-                "tags": tags + ["faultline:recovery"],
-            })
-
         url = DD_EVENTS_URL.format(site=self.site)
-        for event in events:
+        for event in [
+            {
+                "title": f"faultline: {rep.scenario} started",
+                "text": start_text,
+                "date_happened": start_ts,
+                "alert_type": "info",
+                "tags": scenario_tags + ["faultline:start"],
+            },
+            {
+                "title": f"faultline: {rep.scenario} complete",
+                "text": complete_text,
+                "date_happened": completed_at,
+                "alert_type": alert_type,
+                "tags": scenario_tags + ["faultline:complete"],
+            },
+        ]:
             resp = requests.post(url, headers=self._headers, json=event, timeout=10)
             if not resp.ok:
                 console.print(f"[yellow]Warning: event submission failed ({resp.status_code}): {resp.text}[/yellow]")

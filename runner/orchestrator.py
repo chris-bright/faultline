@@ -85,6 +85,9 @@ class Orchestrator:
                 )
         console.print("[dim]Pre-flight: OK[/dim]")
 
+        step_summary = _build_step_summary(scenario.steps)
+        started_at = time.time()
+
         for collector in collectors.values():
             collector.start()
 
@@ -137,6 +140,8 @@ class Orchestrator:
                 skipped=t.container in skipped_targets,
                 metrics=metrics,
                 compliance_tags=scenario.compliance_tags,
+                started_at=started_at,
+                step_summary=step_summary,
             ))
 
         return results
@@ -168,6 +173,15 @@ class Orchestrator:
             )
         console.print("[dim]Pre-flight: OK[/dim]")
 
+        step_summary = [
+            f"baseline {scenario.baseline_seconds}s",
+            f"inject {scenario.fault.type}",
+            f"observe {scenario.observation_seconds}s",
+            "recover",
+            f"wait {scenario.recovery_seconds}s",
+        ]
+        started_at = time.time()
+
         try:
             telemetry.start()
 
@@ -191,6 +205,8 @@ class Orchestrator:
                     run_id=run_id,
                     skipped=True,
                     compliance_tags=scenario.compliance_tags,
+                    started_at=started_at,
+                    step_summary=step_summary,
                 )
             telemetry.mark_fault()
 
@@ -211,9 +227,25 @@ class Orchestrator:
                 run_id=run_id,
                 metrics=metrics,
                 compliance_tags=scenario.compliance_tags,
+                started_at=started_at,
+                step_summary=step_summary,
             )
 
         finally:
             telemetry.stop()
 
         return result
+
+
+def _build_step_summary(steps) -> list[str]:
+    lines = []
+    for step in steps:
+        if step.action == "baseline":
+            lines.append(f"baseline {step.seconds}s")
+        elif step.action == "inject":
+            lines.append(f"inject {step.fault.type} → {step.target}")
+        elif step.action == "wait":
+            lines.append(f"wait {step.seconds}s")
+        elif step.action == "recover":
+            lines.append(f"recover {step.target}")
+    return lines

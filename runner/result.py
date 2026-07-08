@@ -12,6 +12,8 @@ class ScenarioResult:
     skipped: bool = False
     metrics: dict = field(default_factory=dict)
     compliance_tags: list = field(default_factory=list)
+    started_at: float = None
+    step_summary: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
