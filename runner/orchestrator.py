@@ -6,6 +6,7 @@ from runner.sandbox import Sandbox
 from runner.fault import FaultInjector, FaultNotApplied
 from runner.telemetry import TelemetryCollector
 from runner.result import ScenarioResult
+from scenarios.loader import load_scenario, SingleFaultScenario
 
 console = Console()
 
@@ -26,29 +27,25 @@ class Orchestrator:
         self.health_process = self.target_config.get("process")
 
     def run_scenario(self, scenario_path: str) -> list[ScenarioResult]:
-        with open(scenario_path) as f:
-            scenario = yaml.safe_load(f)
-        return [self._execute(scenario)]
+        return [self._execute(load_scenario(scenario_path))]
 
     def run_domain(self, domain: str) -> list[ScenarioResult]:
         domain_path = Path(__file__).parent.parent / "scenarios" / domain
         results = []
         for scenario_file in sorted(domain_path.glob("*.yaml")):
             console.rule(f"[bold]{scenario_file.stem}")
-            with open(scenario_file) as f:
-                scenario = yaml.safe_load(f)
-            results.append(self._execute(scenario))
+            results.append(self._execute(load_scenario(str(scenario_file))))
         return results
 
-    def _execute(self, scenario: dict) -> ScenarioResult:
-        console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario['name']}")
-        console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
+    def _execute(self, scenario: SingleFaultScenario) -> ScenarioResult:
+        console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario.name}")
+        console.print(f"[dim]{scenario.description}[/dim]\n")
 
         sandbox = Sandbox(self.container_name)
         sandbox.attach()
 
         telemetry = TelemetryCollector(
-            scenario["name"],
+            scenario.name,
             sandbox.runtime,
             sandbox.container_name,
             health_probe=self.health_probe,
@@ -69,43 +66,43 @@ class Orchestrator:
             telemetry.start()
 
             console.print("[yellow]Collecting baseline...[/yellow]")
-            time.sleep(scenario.get("baseline_seconds", 10))
+            time.sleep(scenario.baseline_seconds)
 
             injector = FaultInjector(sandbox)
-            console.print(f"[red]Injecting fault:[/red] {scenario['fault']['type']}")
+            fault_dict = {"type": scenario.fault.type, **scenario.fault.params}
+            console.print(f"[red]Injecting fault:[/red] {scenario.fault.type}")
             try:
-                injector.inject(scenario["fault"])
+                injector.inject(fault_dict)
             except FaultNotApplied as e:
                 telemetry.stop()
                 console.print(f"[bold red]SKIP:[/bold red] {e}")
                 return ScenarioResult(
-                    scenario=scenario["name"],
-                    domain=scenario.get("domain"),
-                    fault_type=scenario["fault"]["type"],
+                    scenario=scenario.name,
+                    domain=scenario.domain,
+                    fault_type=scenario.fault.type,
                     target=self.container_name,
                     service=self.service,
                     skipped=True,
-                    compliance_tags=scenario.get("compliance_tags", []),
+                    compliance_tags=scenario.compliance_tags,
                 )
             telemetry.mark_fault()
 
-            observation = scenario.get("observation_seconds", 30)
-            console.print(f"[yellow]Observing for {observation}s...[/yellow]")
-            time.sleep(observation)
+            console.print(f"[yellow]Observing for {scenario.observation_seconds}s...[/yellow]")
+            time.sleep(scenario.observation_seconds)
 
-            injector.recover(scenario["fault"])
+            injector.recover(fault_dict)
             console.print("[yellow]Checking recovery...[/yellow]")
-            time.sleep(scenario.get("recovery_seconds", 15))
+            time.sleep(scenario.recovery_seconds)
 
             metrics = telemetry.collect()
             result = ScenarioResult(
-                scenario=scenario["name"],
-                domain=scenario.get("domain"),
-                fault_type=scenario["fault"]["type"],
+                scenario=scenario.name,
+                domain=scenario.domain,
+                fault_type=scenario.fault.type,
                 target=self.container_name,
                 service=self.service,
                 metrics=metrics,
-                compliance_tags=scenario.get("compliance_tags", []),
+                compliance_tags=scenario.compliance_tags,
             )
 
         finally:
