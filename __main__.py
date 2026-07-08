@@ -17,9 +17,9 @@ def cli():
 @cli.command()
 @click.option("--targets", "-t", default="targets.yaml", show_default=True,
               help="Path to targets.yaml")
-@click.option("--service", multiple=True,
+@click.option("--service", "-s", multiple=True,
               help="Service name(s) to target (default: all services in targets.yaml)")
-@click.option("--scenario", "-s", help="Path to a scenario YAML file")
+@click.option("--scenario", "-c", help="Path to a scenario YAML file")
 @click.option("--domain", "-d", type=click.Choice(["infrastructure", "code", "cloud", "container", "security"]),
               help="Run all scenarios in a domain")
 @click.option("--debug", is_flag=True, help="Output full sample data as JSON")
