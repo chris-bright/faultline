@@ -186,11 +186,8 @@ class DatadogSubmitter:
                 completed_at = max(completed_at, int(m["fault_injected_at"]) + 60)
 
         table = "\n".join(rows)
-        any_recovered = any(
-            r.metrics.get("recovery_seconds") not in (None, float("inf"))
-            for r in group if not r.skipped
-        )
-        alert_type = "success" if any_recovered else "warning"
+        execution_error = next((r.error for r in group if r.error), None)
+        alert_type = "error" if execution_error else "success"
 
         # Probe breakdown across all targets
         probe_lines = []
@@ -215,12 +212,15 @@ class DatadogSubmitter:
                 f"{probe_table}  \n"
             )
 
+        error_section = f"\n**Error:** {execution_error}  \n" if execution_error else ""
+
         complete_text = (
             f"%%% \n"
             f"| Target | Error Rate | Avg Latency | p99 Latency | Recovery |  \n"
             f"|--------|-----------|-------------|-------------|----------|  \n"
             f"{table}  \n"
             f"{probe_section}"
+            f"{error_section}"
             f" %%%"
         )
 

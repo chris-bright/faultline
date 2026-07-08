@@ -14,6 +14,7 @@ class ScenarioResult:
     compliance_tags: list = field(default_factory=list)
     started_at: float = None
     step_summary: list = field(default_factory=list)
+    error: str = None
 
     def to_dict(self) -> dict:
         d = asdict(self)

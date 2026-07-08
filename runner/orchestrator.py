@@ -93,8 +93,8 @@ class Orchestrator:
 
         active_faults: dict[str, dict] = {}
         skipped_targets: set[str] = set()
-        # target -> probe_name -> [window_result, ...]
         probe_results: dict[str, dict[str, list]] = {}
+        execution_error = None
 
         try:
             for step in scenario.steps:
@@ -139,6 +139,10 @@ class Orchestrator:
                     window_data["window"] = window_label
                     probe_results.setdefault(step.target, {}).setdefault(step.probe_name, []).append(window_data)
 
+        except Exception as e:
+            execution_error = f"{type(e).__name__}: {e}"
+            console.print(f"[bold red]Scenario error:[/bold red] {execution_error}")
+
         finally:
             for collector in collectors.values():
                 collector.stop()
@@ -163,6 +167,7 @@ class Orchestrator:
                 compliance_tags=scenario.compliance_tags,
                 started_at=started_at,
                 step_summary=step_summary,
+                error=execution_error,
             ))
 
         return results
@@ -202,6 +207,8 @@ class Orchestrator:
             f"wait {scenario.recovery_seconds}s",
         ]
         started_at = time.time()
+        metrics = {}
+        execution_error = None
 
         try:
             telemetry.start()
@@ -215,7 +222,6 @@ class Orchestrator:
             try:
                 injector.inject(fault_dict)
             except FaultNotApplied as e:
-                telemetry.stop()
                 console.print(f"[bold red]SKIP:[/bold red] {e}")
                 return ScenarioResult(
                     scenario=scenario.name,
@@ -239,23 +245,28 @@ class Orchestrator:
             time.sleep(scenario.recovery_seconds)
 
             metrics = telemetry.collect()
-            result = ScenarioResult(
-                scenario=scenario.name,
-                domain=scenario.domain,
-                fault_type=scenario.fault.type,
-                target=target.container,
-                service=target.service,
-                run_id=run_id,
-                metrics=metrics,
-                compliance_tags=scenario.compliance_tags,
-                started_at=started_at,
-                step_summary=step_summary,
-            )
+
+        except Exception as e:
+            execution_error = f"{type(e).__name__}: {e}"
+            console.print(f"[bold red]Scenario error:[/bold red] {execution_error}")
+            metrics = telemetry.collect()
 
         finally:
             telemetry.stop()
 
-        return result
+        return ScenarioResult(
+            scenario=scenario.name,
+            domain=scenario.domain,
+            fault_type=scenario.fault.type,
+            target=target.container,
+            service=target.service,
+            run_id=run_id,
+            metrics=metrics,
+            compliance_tags=scenario.compliance_tags,
+            started_at=started_at,
+            step_summary=step_summary,
+            error=execution_error,
+        )
 
 
 def _build_step_summary(steps) -> list[str]:
