@@ -14,6 +14,7 @@ docker run --rm \
   --cap-add=NET_ADMIN \
   --cap-add=SYS_PTRACE \
   --cap-add=SYS_ADMIN \
+  -e DD_API_KEY \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(pwd)/targets:/app/targets:ro" \
   -v "$(pwd)/scenarios:/app/scenarios:ro" \
