@@ -15,7 +15,7 @@ def cli():
 
 
 @cli.command()
-@click.option("--targets", "-t", required=True, default="targets.yaml", show_default=True,
+@click.option("--targets", "-t", default="targets.yaml", show_default=True,
               help="Path to targets.yaml")
 @click.option("--service", multiple=True,
               help="Service name(s) to target (default: all services in targets.yaml)")
