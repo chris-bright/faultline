@@ -46,17 +46,23 @@ The security domain is active testing — not misconfiguration scanning. Each sc
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run a single scenario
-python __main__.py run -c targets/simple_api/target.yaml -s scenarios/infrastructure/cpu_stress.yaml
+# Run a scenario against one service
+python __main__.py run -s simple_api -c scenarios/infrastructure/cpu_stress.yaml
+
+# Run against multiple services
+python __main__.py run -s simple_api -s redis -c scenarios/infrastructure/cpu_stress.yaml
+
+# Run against all services in targets.yaml
+python __main__.py run -c scenarios/infrastructure/cpu_stress.yaml
 
 # Run all scenarios in a domain
-python __main__.py run -c targets/simple_api/target.yaml -d infrastructure
+python __main__.py run -s simple_api -d infrastructure
 
 # Skip Datadog submission
-python __main__.py run -c targets/simple_api/target.yaml -d infrastructure --no-submit
+python __main__.py run -s simple_api -c scenarios/infrastructure/cpu_stress.yaml --no-submit
 
 # Full sample data as JSON
-python __main__.py run -c targets/simple_api/target.yaml -d infrastructure --debug
+python __main__.py run -s simple_api -c scenarios/infrastructure/cpu_stress.yaml --debug
 ```
 
 Results are saved to `results_dir` (default `/tmp/faultline/`, last 12 runs kept) and submitted to Datadog if configured.
@@ -85,13 +91,16 @@ output:
 
 ## Target Config
 
-Each target needs a `target.yaml` pointing at a running container:
+All targets are defined in a single `targets.yaml` at the project root:
 
 ```yaml
-container: my-app       # name of the running Docker container
-health_path: /health    # HTTP health endpoint (curl, 1s timeout)
-port: 8080
-process: python         # process name for /proc state check (fallback)
+services:
+  my-app:
+    container: my-app       # name of the running Docker container
+    service: my-app         # Datadog service name (used for APM correlation)
+    health_path: /health    # HTTP health endpoint (curl, 1s timeout)
+    port: 8080
+    process: python         # process name for /proc state check (fallback)
 ```
 
 Health probe priority: `health_probe` (explicit shell command) → HTTP `health_path` → `/proc/<pid>/status` state → `nc -z port`
@@ -119,7 +128,7 @@ docker compose build keycloak     # rebuild a specific image
 
 Each scenario run submits:
 
-**Metrics** (tagged `scenario`, `domain`, `fault_type`, `target`, `service`, `skipped`, `compliance`):
+**Metrics** (tagged `scenario`, `domain`, `fault_type`, `target`, `service`, `skipped`, `run_id`, `compliance`):
 - `faultline.execution` — count, emitted for every run including skips
 - `faultline.error_rate` — fraction of health probe failures during fault window
 - `faultline.avg_latency_ms`, `faultline.p95_latency_ms`, `faultline.p99_latency_ms`
