@@ -7,6 +7,7 @@ class ScenarioResult:
     fault_type: str
     target: str
     service: str
+    run_id: str = None
     domain: str = None
     skipped: bool = False
     metrics: dict = field(default_factory=dict)

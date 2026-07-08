@@ -62,6 +62,8 @@ class DatadogSubmitter:
             f"service:{result.service}",
             f"skipped:{'true' if result.skipped else 'false'}",
         ]
+        if result.run_id:
+            tags.append(f"run_id:{result.run_id}")
         for ct in result.compliance_tags:
             tags.append(f"compliance:{ct}")
         return tags
