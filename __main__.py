@@ -1,5 +1,6 @@
 import os
 import click
+from version import __version__
 from config import load_config
 from runner.orchestrator import Orchestrator
 from reports.reporter import Reporter
@@ -7,6 +8,7 @@ from reports.datadog import DatadogSubmitter
 
 
 @click.group()
+@click.version_option(__version__, prog_name="faultline")
 def cli():
     """faultline — fault injection agent for containerized services"""
     pass
