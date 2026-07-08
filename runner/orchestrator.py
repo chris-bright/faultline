@@ -1,32 +1,44 @@
 import time
+import uuid
 from pathlib import Path
 from rich.console import Console
 from runner.sandbox import Sandbox
 from runner.fault import FaultInjector, FaultNotApplied
 from runner.telemetry import TelemetryCollector
 from runner.result import ScenarioResult
-from runner.target import TargetConfig, load_target
+from runner.target import TargetConfig, load_targets
 from scenarios.loader import load_scenario, SingleFaultScenario
 
 console = Console()
 
 
 class Orchestrator:
-    def run_scenario(self, target_path: str, scenario_path: str) -> list[ScenarioResult]:
-        target = load_target(target_path)
-        return [self._execute(target, load_scenario(scenario_path))]
+    def run_scenario(self, targets_path: str, scenario_path: str,
+                     services: list[str] = None) -> list[ScenarioResult]:
+        run_id = str(uuid.uuid4())
+        console.print(f"[dim]run_id: {run_id}[/dim]")
+        targets = load_targets(targets_path, services)
+        scenario = load_scenario(scenario_path)
+        return [self._execute(target, scenario, run_id) for target in targets]
 
-    def run_domain(self, target_path: str, domain: str) -> list[ScenarioResult]:
-        target = load_target(target_path)
+    def run_domain(self, targets_path: str, domain: str,
+                   services: list[str] = None) -> list[ScenarioResult]:
+        run_id = str(uuid.uuid4())
+        console.print(f"[dim]run_id: {run_id}[/dim]")
+        targets = load_targets(targets_path, services)
         domain_path = Path(__file__).parent.parent / "scenarios" / domain
         results = []
         for scenario_file in sorted(domain_path.glob("*.yaml")):
             console.rule(f"[bold]{scenario_file.stem}")
-            results.append(self._execute(target, load_scenario(str(scenario_file))))
+            scenario = load_scenario(str(scenario_file))
+            for target in targets:
+                results.append(self._execute(target, scenario, run_id))
         return results
 
-    def _execute(self, target: TargetConfig, scenario: SingleFaultScenario) -> ScenarioResult:
-        console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario.name}")
+    def _execute(self, target: TargetConfig, scenario: SingleFaultScenario,
+                 run_id: str) -> ScenarioResult:
+        console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario.name}  "
+                      f"[dim]→ {target.service}[/dim]")
         console.print(f"[dim]{scenario.description}[/dim]\n")
 
         sandbox = Sandbox(target.container)
@@ -70,6 +82,7 @@ class Orchestrator:
                     fault_type=scenario.fault.type,
                     target=target.container,
                     service=target.service,
+                    run_id=run_id,
                     skipped=True,
                     compliance_tags=scenario.compliance_tags,
                 )
@@ -89,6 +102,7 @@ class Orchestrator:
                 fault_type=scenario.fault.type,
                 target=target.container,
                 service=target.service,
+                run_id=run_id,
                 metrics=metrics,
                 compliance_tags=scenario.compliance_tags,
             )

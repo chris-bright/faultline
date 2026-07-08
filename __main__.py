@@ -15,29 +15,33 @@ def cli():
 
 
 @cli.command()
-@click.option("--config", "-c", required=True, help="Path to target.yaml for the running container")
-@click.option("--scenario", "-s", help="Path to a scenario YAML file")
-@click.option("--domain", "-d", type=click.Choice(["infrastructure", "code", "cloud", "container", "security"]), help="Run all scenarios in a domain")
+@click.option("--targets", "-t", default="targets.yaml", show_default=True,
+              help="Path to targets.yaml")
+@click.option("--service", "-s", multiple=True,
+              help="Service name(s) to target (default: all services in targets.yaml)")
+@click.option("--scenario", "-c", help="Path to a scenario YAML file")
+@click.option("--domain", "-d", type=click.Choice(["infrastructure", "code", "cloud", "container", "security"]),
+              help="Run all scenarios in a domain")
 @click.option("--debug", is_flag=True, help="Output full sample data as JSON")
 @click.option("--no-submit", is_flag=True, help="Skip Datadog submission")
 @click.option("--submission-mode", type=click.Choice(["agent", "agentless"]), default=None,
               help="Override submission mode from faultline.yaml (agent=DogStatsD, agentless=direct HTTP)")
 @click.option("--faultline-config", default="faultline.yaml", show_default=True,
               help="Path to faultline.yaml config file")
-def run(config, scenario, domain, debug, no_submit, submission_mode, faultline_config):
-    """Attach to a running container and inject faults."""
+def run(targets, service, scenario, domain, debug, no_submit, submission_mode, faultline_config):
+    """Attach to running containers and inject faults."""
     fl_config = load_config(faultline_config)
 
-    # CLI flags override config file
     mode = submission_mode or fl_config.datadog.submission_mode
     effective_debug = debug or fl_config.output.debug
 
+    services = list(service) if service else None
     orchestrator = Orchestrator()
 
     if scenario:
-        results = orchestrator.run_scenario(config, scenario)
+        results = orchestrator.run_scenario(targets, scenario, services)
     elif domain:
-        results = orchestrator.run_domain(config, domain)
+        results = orchestrator.run_domain(targets, domain, services)
     else:
         raise click.UsageError("Provide --scenario or --domain")
 
