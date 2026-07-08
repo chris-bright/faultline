@@ -1,0 +1,30 @@
+services:
+  simple_api:
+    container: simple_api
+    service: simple_api
+    health_path: /health
+    port: 8080
+    process: python
+
+  redis:
+    container: redis
+    service: redis
+    health_probe: "redis-cli PING | grep -q PONG"
+    port: 6379
+    process: redis-server
+
+  grafana:
+    container: grafana
+    service: grafana
+    health_path: /api/health
+    port: 3000
+    process: grafana
+
+  keycloak:
+    container: keycloak
+    service: keycloak
+    health_probe: "grep -q 'State:.*[RS]' /proc/1/status"
+    port: 8080
+    process: java
+    # ubi9-micro base — faultline injects via nsenter from its own container (run via faultline.sh)
+    # health probe uses /proc/1/status since curl is not available in ubi9-micro
