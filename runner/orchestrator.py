@@ -5,6 +5,7 @@ from rich.console import Console
 from runner.sandbox import Sandbox
 from runner.fault import FaultInjector, FaultNotApplied
 from runner.telemetry import TelemetryCollector
+from runner.result import ScenarioResult
 
 console = Console()
 
@@ -24,12 +25,12 @@ class Orchestrator:
         self.health_port = self.target_config.get("port", 8080)
         self.health_process = self.target_config.get("process")
 
-    def run_scenario(self, scenario_path: str) -> dict:
+    def run_scenario(self, scenario_path: str) -> list[ScenarioResult]:
         with open(scenario_path) as f:
             scenario = yaml.safe_load(f)
-        return self._execute(scenario)
+        return [self._execute(scenario)]
 
-    def run_domain(self, domain: str) -> list[dict]:
+    def run_domain(self, domain: str) -> list[ScenarioResult]:
         domain_path = Path(__file__).parent.parent / "scenarios" / domain
         results = []
         for scenario_file in sorted(domain_path.glob("*.yaml")):
@@ -39,7 +40,7 @@ class Orchestrator:
             results.append(self._execute(scenario))
         return results
 
-    def _execute(self, scenario: dict) -> dict:
+    def _execute(self, scenario: dict) -> ScenarioResult:
         console.print(f"\n[bold cyan]Scenario:[/bold cyan] {scenario['name']}")
         console.print(f"[dim]{scenario.get('description', '')}[/dim]\n")
 
@@ -77,16 +78,15 @@ class Orchestrator:
             except FaultNotApplied as e:
                 telemetry.stop()
                 console.print(f"[bold red]SKIP:[/bold red] {e}")
-                return {
-                    "scenario": scenario["name"],
-                    "domain": scenario.get("domain"),
-                    "fault_type": scenario["fault"]["type"],
-                    "target": self.container_name,
-                    "service": self.service,
-                    "skipped": True,
-                    "metrics": {},
-                    "compliance_tags": scenario.get("compliance_tags", []),
-                }
+                return ScenarioResult(
+                    scenario=scenario["name"],
+                    domain=scenario.get("domain"),
+                    fault_type=scenario["fault"]["type"],
+                    target=self.container_name,
+                    service=self.service,
+                    skipped=True,
+                    compliance_tags=scenario.get("compliance_tags", []),
+                )
             telemetry.mark_fault()
 
             observation = scenario.get("observation_seconds", 30)
@@ -98,15 +98,15 @@ class Orchestrator:
             time.sleep(scenario.get("recovery_seconds", 15))
 
             metrics = telemetry.collect()
-            result = {
-                "scenario": scenario["name"],
-                "domain": scenario.get("domain"),
-                "fault_type": scenario["fault"]["type"],
-                "target": self.container_name,
-                "service": self.service,
-                "metrics": metrics,
-                "compliance_tags": scenario.get("compliance_tags", []),
-            }
+            result = ScenarioResult(
+                scenario=scenario["name"],
+                domain=scenario.get("domain"),
+                fault_type=scenario["fault"]["type"],
+                target=self.container_name,
+                service=self.service,
+                metrics=metrics,
+                compliance_tags=scenario.get("compliance_tags", []),
+            )
 
         finally:
             telemetry.stop()

@@ -2,6 +2,7 @@ import os
 import time
 import requests
 from rich.console import Console
+from runner.result import ScenarioResult
 
 console = Console()
 
@@ -40,34 +41,34 @@ class DatadogSubmitter:
         except ImportError:
             raise RuntimeError("datadog package required for agent mode: pip install datadog")
 
-    def submit(self, payload: dict):
+    def submit(self, results: list[ScenarioResult]):
         ts = int(time.time())
 
-        for scenario in payload.get("scenarios", []):
-            tags = self._build_tags(scenario)
-            self._submit_metrics(scenario, ts, tags)
-            if not scenario.get("skipped"):
-                self._submit_events(scenario, tags)
+        for result in results:
+            tags = self._build_tags(result)
+            self._submit_metrics(result, ts, tags)
+            if not result.skipped:
+                self._submit_events(result, tags)
 
         mode_label = f"agent ({self.agent_host}:{self.agent_port})" if self.mode == "agent" else self.site
         console.print(f"[dim]Submitted to Datadog ({mode_label})[/dim]")
 
-    def _build_tags(self, scenario: dict) -> list[str]:
+    def _build_tags(self, result: ScenarioResult) -> list[str]:
         tags = [
-            f"scenario:{scenario['scenario']}",
-            f"domain:{scenario.get('domain', 'unknown')}",
-            f"fault_type:{scenario['fault_type']}",
-            f"target:{scenario.get('target', 'unknown')}",
-            f"service:{scenario.get('service', scenario.get('target', 'unknown'))}",
-            f"skipped:{'true' if scenario.get('skipped') else 'false'}",
+            f"scenario:{result.scenario}",
+            f"domain:{result.domain or 'unknown'}",
+            f"fault_type:{result.fault_type}",
+            f"target:{result.target}",
+            f"service:{result.service}",
+            f"skipped:{'true' if result.skipped else 'false'}",
         ]
-        for ct in scenario.get("compliance_tags", []):
+        for ct in result.compliance_tags:
             tags.append(f"compliance:{ct}")
         return tags
 
-    def _submit_metrics(self, scenario: dict, ts: int, tags: list[str]):
-        metrics = scenario.get("metrics", {})
-        skipped = scenario.get("skipped", False)
+    def _submit_metrics(self, result: ScenarioResult, ts: int, tags: list[str]):
+        metrics = result.metrics
+        skipped = result.skipped
 
         if self.mode == "agent":
             self._statsd.increment(f"{DD_METRIC_PREFIX}.execution", tags=tags)
@@ -110,19 +111,18 @@ class DatadogSubmitter:
         if not resp.ok:
             console.print(f"[yellow]Warning: metrics submission failed ({resp.status_code}): {resp.text}[/yellow]")
 
-    def _submit_events(self, scenario: dict, tags: list[str]):
-        metrics = scenario.get("metrics", {})
+    def _submit_events(self, result: ScenarioResult, tags: list[str]):
+        metrics = result.metrics
         fault_injected_at = metrics.get("fault_injected_at")
         recovery_seconds = metrics.get("recovery_seconds")
 
         if not fault_injected_at:
             return
 
-        compliance = scenario.get("compliance_tags", [])
-        compliance_str = ", ".join(compliance) if compliance else "none"
+        compliance_str = ", ".join(result.compliance_tags) if result.compliance_tags else "none"
 
         inject_text = (
-            f"Fault injection started. Observing service behaviour under {scenario['fault_type']}.\n"
+            f"Fault injection started. Observing service behaviour under {result.fault_type}.\n"
             f"Compliance: {compliance_str}"
         )
 
@@ -142,7 +142,7 @@ class DatadogSubmitter:
 
         if self.mode == "agent":
             self._statsd.event(
-                f"faultline: {scenario['fault_type']} injected into {scenario.get('target')}",
+                f"faultline: {result.fault_type} injected into {result.target}",
                 inject_text,
                 alert_type="info",
                 tags=tags + ["faultline:inject"],
@@ -150,7 +150,7 @@ class DatadogSubmitter:
             )
             if recovered:
                 self._statsd.event(
-                    f"faultline: {scenario['fault_type']} recovered on {scenario.get('target')}",
+                    f"faultline: {result.fault_type} recovered on {result.target}",
                     recovery_text,
                     alert_type="success",
                     tags=tags + ["faultline:recovery"],
@@ -160,7 +160,7 @@ class DatadogSubmitter:
 
         # agentless: individual HTTP POSTs
         events = [{
-            "title": f"faultline: {scenario['fault_type']} injected into {scenario.get('target')}",
+            "title": f"faultline: {result.fault_type} injected into {result.target}",
             "text": inject_text,
             "date_happened": int(fault_injected_at),
             "alert_type": "info",
@@ -169,7 +169,7 @@ class DatadogSubmitter:
 
         if recovered:
             events.append({
-                "title": f"faultline: {scenario['fault_type']} recovered on {scenario.get('target')}",
+                "title": f"faultline: {result.fault_type} recovered on {result.target}",
                 "text": recovery_text,
                 "date_happened": int(fault_injected_at + recovery_seconds),
                 "alert_type": "success",

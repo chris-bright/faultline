@@ -47,37 +47,21 @@ def run(config, scenario, domain, debug, no_submit, submission_mode, faultline_c
     if no_submit:
         return
 
-    has_api_key = bool(os.environ.get("DD_API_KEY"))
-
     if mode == "agent":
-        from datetime import datetime, timezone
-        if isinstance(results, dict):
-            results = [results]
-        payload = {
-            "run_at": datetime.now(timezone.utc).isoformat(),
-            "scenarios": results,
-        }
         DatadogSubmitter(
             mode="agent",
             agent_host=fl_config.datadog.agent_host,
             agent_port=fl_config.datadog.agent_port,
-        ).submit(payload)
+        ).submit(results)
     elif mode == "agentless":
-        if not has_api_key:
+        if not os.environ.get("DD_API_KEY"):
             from rich.console import Console
             Console().print("[dim]DD_API_KEY not set — skipping Datadog submission[/dim]")
             return
-        from datetime import datetime, timezone
-        if isinstance(results, dict):
-            results = [results]
-        payload = {
-            "run_at": datetime.now(timezone.utc).isoformat(),
-            "scenarios": results,
-        }
         DatadogSubmitter(
             mode="agentless",
             site=fl_config.datadog.site,
-        ).submit(payload)
+        ).submit(results)
 
 
 if __name__ == "__main__":

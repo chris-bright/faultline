@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.syntax import Syntax
 from rich import box
+from runner.result import ScenarioResult
 
 console = Console()
 
@@ -20,13 +21,10 @@ class Reporter:
         self.debug = debug
         self.results_dir = Path(results_dir) if results_dir else DEFAULT_RESULTS_DIR
 
-    def render(self, results):
-        if isinstance(results, dict):
-            results = [results]
-
+    def render(self, results: list[ScenarioResult]):
         payload = {
             "run_at": datetime.utcnow().isoformat() + "Z",
-            "scenarios": results,
+            "scenarios": [r.to_dict() for r in results],
         }
 
         if self.debug:
@@ -36,25 +34,25 @@ class Reporter:
 
         self._save(payload)
 
-    def _print_summary(self, results: list):
+    def _print_summary(self, results: list[ScenarioResult]):
         console.print()
         console.rule("[bold]faultline results")
         for result in results:
             self._print_scenario(result)
 
-    def _print_scenario(self, result: dict):
-        metrics = result.get("metrics", {})
+    def _print_scenario(self, result: ScenarioResult):
+        metrics = result.metrics
         samples = metrics.get("samples", [])
         latencies = [s["latency_ms"] for s in samples if s.get("ok") and s.get("latency_ms") is not None]
 
-        if result.get("skipped"):
-            console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
-                          f"[dim]{result['fault_type']}[/dim]  "
+        if result.skipped:
+            console.print(f"\n[bold cyan]{result.scenario}[/bold cyan]  "
+                          f"[dim]{result.fault_type}[/dim]  "
                           f"[yellow]SKIP[/yellow]")
             return
 
-        console.print(f"\n[bold cyan]{result['scenario']}[/bold cyan]  "
-                      f"[dim]{result['fault_type']}[/dim]")
+        console.print(f"\n[bold cyan]{result.scenario}[/bold cyan]  "
+                      f"[dim]{result.fault_type}[/dim]")
 
         if not latencies:
             console.print("[dim]No latency data collected.[/dim]")
@@ -73,9 +71,10 @@ class Reporter:
         stats = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
         stats.add_column("stat", style="dim")
         stats.add_column("value")
+        recovery = metrics.get("recovery_seconds")
         stats.add_row("samples",          str(metrics.get("total_samples", n)))
         stats.add_row("error_rate",       f"{metrics.get('error_rate', 0):.1%}")
-        stats.add_row("recovery",         f"{metrics.get('recovery_seconds', '—'):.2f}s" if isinstance(metrics.get('recovery_seconds'), float) and metrics.get('recovery_seconds') != float('inf') else "—")
+        stats.add_row("recovery",         f"{recovery:.2f}s" if isinstance(recovery, float) and recovery != float("inf") else "—")
         stats.add_row("min latency",      f"{lo:.1f}ms")
         stats.add_row("avg latency",      f"{avg:.1f}ms")
         stats.add_row("p50",              f"{p50:.1f}ms")
