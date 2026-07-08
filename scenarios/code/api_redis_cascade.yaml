@@ -1,0 +1,29 @@
+name: api_redis_cascade
+domain: code
+description: Kill the Redis dependency and observe how the API degrades and recovers
+
+targets:
+  - simple_api
+  - redis
+
+steps:
+  - action: baseline
+    seconds: 10
+
+  - action: inject
+    target: redis
+    fault:
+      type: process_kill
+
+  - action: wait
+    seconds: 30
+
+  - action: recover
+    target: redis
+
+  - action: wait
+    seconds: 15
+
+compliance_tags:
+  - code.dependency_resilience
+  - code.cascade_failure

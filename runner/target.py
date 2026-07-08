@@ -22,6 +22,12 @@ def load_target(targets_path: str, service: str) -> TargetConfig:
     return _parse(service, services[service])
 
 
+def load_targets_by_name(targets_path: str) -> dict[str, TargetConfig]:
+    raw = yaml.safe_load(Path(targets_path).read_text())
+    all_services = raw.get("services", {})
+    return {name: _parse(name, all_services[name]) for name in all_services}
+
+
 def load_targets(targets_path: str, services: list[str] = None) -> list[TargetConfig]:
     raw = yaml.safe_load(Path(targets_path).read_text())
     all_services = raw.get("services", {})
