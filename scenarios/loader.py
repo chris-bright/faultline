@@ -23,10 +23,12 @@ class SingleFaultScenario:
 
 @dataclass
 class ScenarioStep:
-    action: str  # baseline | inject | wait | recover
+    action: str  # baseline | inject | wait | recover | probe
     seconds: int = 0
-    target: str = None   # required for inject and recover
+    target: str = None      # required for inject, recover, probe
     fault: FaultParams = None  # required for inject
+    probe_name: str = None  # required for probe (maps to probes: key in targets.yaml)
+    window: str = None      # optional label for probe result (e.g. "fault", "recovery")
 
 
 @dataclass
@@ -74,7 +76,7 @@ def _load_step_based(raw: dict, path: str) -> StepBasedScenario:
         action = s.get("action")
         if not action:
             raise ValueError(f"Step {i} missing 'action' in {path}")
-        if action not in ("baseline", "inject", "wait", "recover"):
+        if action not in ("baseline", "inject", "wait", "recover", "probe"):
             raise ValueError(f"Step {i} unknown action '{action}' in {path}")
 
         fault = None
@@ -90,11 +92,21 @@ def _load_step_based(raw: dict, path: str) -> StepBasedScenario:
         if action == "recover" and "target" not in s:
             raise ValueError(f"Step {i} recover missing 'target' in {path}")
 
+        if action == "probe":
+            if "target" not in s:
+                raise ValueError(f"Step {i} probe missing 'target' in {path}")
+            if "probe" not in s:
+                raise ValueError(f"Step {i} probe missing 'probe' name in {path}")
+            if not s.get("seconds"):
+                raise ValueError(f"Step {i} probe missing 'seconds' in {path}")
+
         steps.append(ScenarioStep(
             action=action,
             seconds=s.get("seconds", 0),
             target=s.get("target"),
             fault=fault,
+            probe_name=s.get("probe"),
+            window=s.get("window"),
         ))
 
     return StepBasedScenario(

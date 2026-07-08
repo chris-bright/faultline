@@ -5,6 +5,8 @@ services:
     health_path: /health
     port: 8080
     process: python
+    probes:
+      work: "curl -sf --max-time 2 http://localhost:8080/work"
 
   redis:
     container: redis
@@ -12,6 +14,9 @@ services:
     health_probe: "redis-cli PING | grep -q PONG"
     port: 6379
     process: redis-server
+    probes:
+      set_key: "redis-cli SET faultline_probe test"
+      get_key: "redis-cli GET faultline_probe"
 
   grafana:
     container: grafana

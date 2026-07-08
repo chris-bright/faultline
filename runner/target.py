@@ -11,6 +11,7 @@ class TargetConfig:
     health_path: str = None
     health_port: int = 8080
     health_process: str = None
+    probes: dict = None
 
 
 def load_target(targets_path: str, service: str) -> TargetConfig:
@@ -52,4 +53,5 @@ def _parse(name: str, raw: dict) -> TargetConfig:
         health_path=raw.get("health_path"),
         health_port=raw.get("port", 8080),
         health_process=raw.get("process"),
+        probes=raw.get("probes") or {},
     )

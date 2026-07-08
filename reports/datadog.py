@@ -78,6 +78,7 @@ class DatadogSubmitter:
     def _submit_metrics(self, result: ScenarioResult, ts: int, tags: list[str]):
         metrics = result.metrics
         skipped = result.skipped
+        probes = (metrics.get("probes", {}) or {}) if not skipped else {}
 
         if self.mode == "agent":
             self._statsd.increment(f"{DD_METRIC_PREFIX}.execution", tags=tags)
@@ -95,11 +96,19 @@ class DatadogSubmitter:
                 recovery = metrics.get("recovery_seconds")
                 if recovery is not None and recovery != float("inf"):
                     self._statsd.gauge(f"{DD_METRIC_PREFIX}.recovery_seconds", recovery, tags=tags)
+            for probe_name, windows in probes.items():
+                for w in windows:
+                    ptags = tags + [f"probe:{probe_name}", f"probe_window:{w.get('window', 'unknown')}"]
+                    if w.get("error_rate") is not None:
+                        self._statsd.gauge(f"{DD_METRIC_PREFIX}.probe.error_rate", w["error_rate"], tags=ptags)
+                    if w.get("avg_latency_ms") is not None:
+                        self._statsd.gauge(f"{DD_METRIC_PREFIX}.probe.avg_latency_ms", w["avg_latency_ms"], tags=ptags)
+                    if w.get("p99_latency_ms") is not None:
+                        self._statsd.gauge(f"{DD_METRIC_PREFIX}.probe.p99_latency_ms", w["p99_latency_ms"], tags=ptags)
             return
 
         # agentless: batch HTTP POST
         series = [self._count("execution", 1, ts, tags)]
-
         if not skipped and metrics:
             if metrics.get("error_rate") is not None:
                 series.append(self._gauge("error_rate", metrics["error_rate"], ts, tags))
@@ -114,6 +123,15 @@ class DatadogSubmitter:
             recovery = metrics.get("recovery_seconds")
             if recovery is not None and recovery != float("inf"):
                 series.append(self._gauge("recovery_seconds", recovery, ts, tags))
+        for probe_name, windows in probes.items():
+            for w in windows:
+                ptags = tags + [f"probe:{probe_name}", f"probe_window:{w.get('window', 'unknown')}"]
+                if w.get("error_rate") is not None:
+                    series.append(self._gauge("probe.error_rate", w["error_rate"], ts, ptags))
+                if w.get("avg_latency_ms") is not None:
+                    series.append(self._gauge("probe.avg_latency_ms", w["avg_latency_ms"], ts, ptags))
+                if w.get("p99_latency_ms") is not None:
+                    series.append(self._gauge("probe.p99_latency_ms", w["p99_latency_ms"], ts, ptags))
 
         url = DD_API_URL.format(site=self.site)
         resp = requests.post(url, headers=self._headers, json={"series": series}, timeout=10)
@@ -174,11 +192,35 @@ class DatadogSubmitter:
         )
         alert_type = "success" if any_recovered else "warning"
 
+        # Probe breakdown across all targets
+        probe_lines = []
+        for r in group:
+            if r.skipped:
+                continue
+            for probe_name, windows in (r.metrics.get("probes", {}) or {}).items():
+                for w in windows:
+                    label = w.get("window", "")
+                    err = f"{w['error_rate']:.1%}" if w.get("error_rate") is not None else "—"
+                    avg = f"{w['avg_latency_ms']:.0f}ms" if w.get("avg_latency_ms") is not None else "—"
+                    p99 = f"{w['p99_latency_ms']:.0f}ms" if w.get("p99_latency_ms") is not None else "—"
+                    probe_lines.append(f"| {r.target} | {probe_name} | {label} | {err} | {avg} | {p99} |")
+
+        probe_section = ""
+        if probe_lines:
+            probe_table = "\n".join(probe_lines)
+            probe_section = (
+                f"\n**Workload Probes:**  \n"
+                f"| Target | Probe | Window | Error Rate | Avg Latency | p99 Latency |  \n"
+                f"|--------|-------|--------|-----------|-------------|-------------|  \n"
+                f"{probe_table}  \n"
+            )
+
         complete_text = (
             f"%%% \n"
             f"| Target | Error Rate | Avg Latency | p99 Latency | Recovery |  \n"
             f"|--------|-----------|-------------|-------------|----------|  \n"
             f"{table}  \n"
+            f"{probe_section}"
             f" %%%"
         )
 

@@ -3,6 +3,40 @@ import threading
 from runner.runtime import ContainerRuntime
 from rich.console import Console
 
+
+def run_probe_window(runtime: ContainerRuntime, container_name: str,
+                     command: str, seconds: int) -> dict:
+    """Run a probe command every second for `seconds` seconds, return aggregate stats."""
+    samples = []
+    end_time = time.time() + seconds
+    while time.time() < end_time:
+        tick_start = time.time()
+        try:
+            t0 = time.time()
+            exit_code, _ = runtime.exec_run(container_name, command)
+            latency_ms = (time.time() - t0) * 1000
+            ok = exit_code == 0
+        except Exception:
+            latency_ms = None
+            ok = False
+        samples.append({"ok": ok, "latency_ms": latency_ms})
+        elapsed = time.time() - tick_start
+        sleep_for = 1.0 - elapsed
+        if sleep_for > 0 and time.time() + sleep_for < end_time:
+            time.sleep(sleep_for)
+
+    total = len(samples)
+    errors = sum(1 for s in samples if not s["ok"])
+    latencies = sorted(s["latency_ms"] for s in samples if s["ok"] and s["latency_ms"] is not None)
+    n = len(latencies)
+    return {
+        "total_samples": total,
+        "error_rate": errors / total if total else 0,
+        "avg_latency_ms": sum(latencies) / n if n else None,
+        "p95_latency_ms": latencies[int(n * 0.95)] if n else None,
+        "p99_latency_ms": latencies[min(int(n * 0.99), n - 1)] if n else None,
+    }
+
 console = Console()
 
 

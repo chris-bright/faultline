@@ -86,6 +86,11 @@ class Reporter:
         # Histogram
         self._print_histogram(latencies_sorted)
 
+        # Workload probe results
+        probes = metrics.get("probes", {})
+        if probes:
+            self._print_probes(probes)
+
     def _print_histogram(self, latencies: list):
         lo = latencies[0]
         hi = latencies[-1]
@@ -106,6 +111,20 @@ class Reporter:
             label_hi = label_lo + bucket_size
             bar = "█" * math.ceil(count / max_count * HISTOGRAM_WIDTH)
             console.print(f"  [dim]{label_lo:6.0f}-{label_hi:<6.0f}[/dim]  [cyan]{bar:<{HISTOGRAM_WIDTH}}[/cyan]  {count}")
+
+    def _print_probes(self, probes: dict):
+        console.print("[dim]workload probes[/dim]")
+        for probe_name, windows in probes.items():
+            for w in windows:
+                label = w.get("window", "")
+                err = f"{w['error_rate']:.1%}" if w.get("error_rate") is not None else "—"
+                avg = f"{w['avg_latency_ms']:.0f}ms" if w.get("avg_latency_ms") is not None else "—"
+                p99 = f"{w['p99_latency_ms']:.0f}ms" if w.get("p99_latency_ms") is not None else "—"
+                samples = w.get("total_samples", "?")
+                console.print(
+                    f"  [cyan]{probe_name}[/cyan] \[{label}]  "
+                    f"error_rate={err}  avg={avg}  p99={p99}  samples={samples}"
+                )
 
     def _print_debug(self, payload: dict):
         console.print()

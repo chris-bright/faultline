@@ -4,7 +4,7 @@ from pathlib import Path
 from rich.console import Console
 from runner.sandbox import Sandbox
 from runner.fault import FaultInjector, FaultNotApplied
-from runner.telemetry import TelemetryCollector
+from runner.telemetry import TelemetryCollector, run_probe_window
 from runner.result import ScenarioResult
 from runner.target import TargetConfig, load_targets, load_targets_by_name
 from scenarios.loader import load_scenario, SingleFaultScenario, StepBasedScenario
@@ -93,6 +93,8 @@ class Orchestrator:
 
         active_faults: dict[str, dict] = {}
         skipped_targets: set[str] = set()
+        # target -> probe_name -> [window_result, ...]
+        probe_results: dict[str, dict[str, list]] = {}
 
         try:
             for step in scenario.steps:
@@ -120,6 +122,23 @@ class Orchestrator:
                         injectors[step.target].recover(active_faults.pop(step.target))
                         console.print(f"[yellow]Recovering {step.target}...[/yellow]")
 
+                elif step.action == "probe":
+                    target_cfg = all_targets[step.target]
+                    probe_cmd = (target_cfg.probes or {}).get(step.probe_name)
+                    if not probe_cmd:
+                        raise ValueError(
+                            f"Probe '{step.probe_name}' not defined for target '{step.target}' in targets.yaml"
+                        )
+                    existing = probe_results.get(step.target, {}).get(step.probe_name, [])
+                    window_label = step.window or f"window_{len(existing) + 1}"
+                    console.print(f"[cyan]Probing:[/cyan] {step.probe_name} on {step.target} "
+                                  f"({step.seconds}s) [{window_label}]")
+                    window_data = run_probe_window(
+                        sandboxes[step.target].runtime, step.target, probe_cmd, step.seconds
+                    )
+                    window_data["window"] = window_label
+                    probe_results.setdefault(step.target, {}).setdefault(step.probe_name, []).append(window_data)
+
         finally:
             for collector in collectors.values():
                 collector.stop()
@@ -130,6 +149,8 @@ class Orchestrator:
         results = []
         for t in targets:
             metrics = collectors[t.container].collect()
+            if t.container in probe_results:
+                metrics["probes"] = probe_results[t.container]
             results.append(ScenarioResult(
                 scenario=scenario.name,
                 domain=scenario.domain,
@@ -248,4 +269,7 @@ def _build_step_summary(steps) -> list[str]:
             lines.append(f"wait {step.seconds}s")
         elif step.action == "recover":
             lines.append(f"recover {step.target}")
+        elif step.action == "probe":
+            label = f" [{step.window}]" if step.window else ""
+            lines.append(f"probe {step.probe_name} on {step.target} ({step.seconds}s){label}")
     return lines
