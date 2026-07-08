@@ -32,12 +32,12 @@ def run(config, scenario, domain, debug, no_submit, submission_mode, faultline_c
     mode = submission_mode or fl_config.datadog.submission_mode
     effective_debug = debug or fl_config.output.debug
 
-    orchestrator = Orchestrator(config=config)
+    orchestrator = Orchestrator()
 
     if scenario:
-        results = orchestrator.run_scenario(scenario)
+        results = orchestrator.run_scenario(config, scenario)
     elif domain:
-        results = orchestrator.run_domain(domain)
+        results = orchestrator.run_domain(config, domain)
     else:
         raise click.UsageError("Provide --scenario or --domain")
 
