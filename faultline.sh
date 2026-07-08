@@ -16,7 +16,7 @@ docker run --rm \
   --cap-add=SYS_ADMIN \
   -e DD_API_KEY \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v "$(pwd)/targets:/app/targets:ro" \
+  -v "$(pwd)/targets.yaml:/app/targets.yaml:ro" \
   -v "$(pwd)/scenarios:/app/scenarios:ro" \
   -v "/tmp/faultline:/tmp/faultline" \
   "$IMAGE" "$@"
