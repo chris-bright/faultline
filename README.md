@@ -200,6 +200,8 @@ faultline/
 
 **Multi-component stack testing** — Faultline currently assumes a single target container. Supporting a full service stack (API + queue + worker + DB) where faults can be injected at specific layers and cascade behaviour observed.
 
+**Observation-only mode** — a `--no-probe` flag (or `observe: false` per target in `targets.yaml`) that disables pre-flight checks and telemetry collection entirely. Faultline executes the scenario steps and fires the start/complete events to Datadog — so fault windows are annotated on traces — but does no health probing of its own. For services that run specialised workloads that can't be triggered externally, or where an operator is observing results directly in Datadog, this decouples fault injection from reachability. Results carry the step execution record and timing only, with a `no_probe: true` marker so the absence of metrics is explicit rather than ambiguous.
+
 ## Known Limitations
 
 - **Network fault observability** — `tc netem` faults (packet loss, bandwidth cap, latency, jitter) are injected but health probes run via `docker exec` bypass the container's NIC, so probe latency won't reflect network degradation. Requires a sidecar HTTP prober making real requests through the network stack.
