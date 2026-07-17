@@ -4,10 +4,10 @@ from pathlib import Path
 from rich.console import Console
 from runner.sandbox import Sandbox
 from runner.fault import FaultInjector, FaultNotApplied
-from runner.telemetry import TelemetryCollector
+from runner.telemetry import TelemetryCollector, run_probe_window
 from runner.result import ScenarioResult
-from runner.target import TargetConfig, load_targets
-from scenarios.loader import load_scenario, SingleFaultScenario
+from runner.target import TargetConfig, load_targets, load_targets_by_name
+from scenarios.loader import load_scenario, SingleFaultScenario, StepBasedScenario
 
 console = Console()
 
@@ -17,22 +17,159 @@ class Orchestrator:
                      services: list[str] = None) -> list[ScenarioResult]:
         run_id = str(uuid.uuid4())
         console.print(f"[dim]run_id: {run_id}[/dim]")
-        targets = load_targets(targets_path, services)
         scenario = load_scenario(scenario_path)
+
+        if isinstance(scenario, StepBasedScenario):
+            all_targets = load_targets_by_name(targets_path)
+            return self._execute_step_scenario(scenario, run_id, all_targets)
+
+        targets = load_targets(targets_path, services)
         return [self._execute(target, scenario, run_id) for target in targets]
 
     def run_domain(self, targets_path: str, domain: str,
                    services: list[str] = None) -> list[ScenarioResult]:
         run_id = str(uuid.uuid4())
         console.print(f"[dim]run_id: {run_id}[/dim]")
-        targets = load_targets(targets_path, services)
         domain_path = Path(__file__).parent.parent / "scenarios" / domain
         results = []
         for scenario_file in sorted(domain_path.glob("*.yaml")):
             console.rule(f"[bold]{scenario_file.stem}")
             scenario = load_scenario(str(scenario_file))
-            for target in targets:
-                results.append(self._execute(target, scenario, run_id))
+
+            if isinstance(scenario, StepBasedScenario):
+                all_targets = load_targets_by_name(targets_path)
+                results.extend(self._execute_step_scenario(scenario, run_id, all_targets))
+            else:
+                targets = load_targets(targets_path, services)
+                for target in targets:
+                    results.append(self._execute(target, scenario, run_id))
+
+        return results
+
+    def _execute_step_scenario(self, scenario: StepBasedScenario, run_id: str,
+                                all_targets: dict[str, TargetConfig]) -> list[ScenarioResult]:
+        console.print(f"\n[bold cyan]Step scenario:[/bold cyan] {scenario.name}  "
+                      f"[dim]targets: {', '.join(scenario.targets)}[/dim]")
+        console.print(f"[dim]{scenario.description}[/dim]\n")
+
+        missing = [t for t in scenario.targets if t not in all_targets]
+        if missing:
+            raise ValueError(f"Targets not found in targets.yaml: {', '.join(missing)}")
+
+        targets = [all_targets[name] for name in scenario.targets]
+
+        sandboxes = {t.container: Sandbox(t.container) for t in targets}
+        for sb in sandboxes.values():
+            sb.attach()
+
+        collectors = {
+            t.container: TelemetryCollector(
+                scenario.name,
+                sandboxes[t.container].runtime,
+                t.container,
+                health_probe=t.health_probe,
+                health_path=t.health_path,
+                health_port=t.health_port,
+                health_process=t.health_process,
+            )
+            for t in targets
+        }
+
+        injectors = {t.container: FaultInjector(sandboxes[t.container]) for t in targets}
+
+        console.print("[dim]Pre-flight: checking all targets...[/dim]")
+        for t in targets:
+            if not collectors[t.container].probe_once():
+                raise RuntimeError(
+                    f"Pre-flight failed: '{t.container}' is not healthy before fault injection."
+                )
+        console.print("[dim]Pre-flight: OK[/dim]")
+
+        step_summary = _build_step_summary(scenario.steps)
+        started_at = time.time()
+
+        for collector in collectors.values():
+            collector.start()
+
+        active_faults: dict[str, dict] = {}
+        skipped_targets: set[str] = set()
+        probe_results: dict[str, dict[str, list]] = {}
+        execution_error = None
+
+        try:
+            for step in scenario.steps:
+                if step.action == "baseline":
+                    console.print(f"[yellow]Baseline ({step.seconds}s)...[/yellow]")
+                    time.sleep(step.seconds)
+
+                elif step.action == "inject":
+                    fault_dict = {"type": step.fault.type, **step.fault.params}
+                    console.print(f"[red]Injecting fault:[/red] {step.fault.type} → {step.target}")
+                    try:
+                        injectors[step.target].inject(fault_dict)
+                        collectors[step.target].mark_fault()
+                        active_faults[step.target] = fault_dict
+                    except FaultNotApplied as e:
+                        console.print(f"[bold red]SKIP ({step.target}):[/bold red] {e}")
+                        skipped_targets.add(step.target)
+
+                elif step.action == "wait":
+                    console.print(f"[yellow]Waiting {step.seconds}s...[/yellow]")
+                    time.sleep(step.seconds)
+
+                elif step.action == "recover":
+                    if step.target in active_faults:
+                        injectors[step.target].recover(active_faults.pop(step.target))
+                        console.print(f"[yellow]Recovering {step.target}...[/yellow]")
+
+                elif step.action == "probe":
+                    target_cfg = all_targets[step.target]
+                    probe_cmd = (target_cfg.probes or {}).get(step.probe_name)
+                    if not probe_cmd:
+                        raise ValueError(
+                            f"Probe '{step.probe_name}' not defined for target '{step.target}' in targets.yaml"
+                        )
+                    existing = probe_results.get(step.target, {}).get(step.probe_name, [])
+                    window_label = step.window or f"window_{len(existing) + 1}"
+                    console.print(f"[cyan]Probing:[/cyan] {step.probe_name} on {step.target} "
+                                  f"({step.seconds}s) [{window_label}]")
+                    window_data = run_probe_window(
+                        sandboxes[step.target].runtime, step.target, probe_cmd, step.seconds
+                    )
+                    window_data["window"] = window_label
+                    probe_results.setdefault(step.target, {}).setdefault(step.probe_name, []).append(window_data)
+
+        except Exception as e:
+            execution_error = f"{type(e).__name__}: {e}"
+            console.print(f"[bold red]Scenario error:[/bold red] {execution_error}")
+
+        finally:
+            for collector in collectors.values():
+                collector.stop()
+
+        fault_types = [s.fault.type for s in scenario.steps if s.action == "inject"]
+        fault_type_str = ",".join(fault_types) if fault_types else "unknown"
+
+        results = []
+        for t in targets:
+            metrics = collectors[t.container].collect()
+            if t.container in probe_results:
+                metrics["probes"] = probe_results[t.container]
+            results.append(ScenarioResult(
+                scenario=scenario.name,
+                domain=scenario.domain,
+                fault_type=fault_type_str,
+                target=t.container,
+                service=t.service,
+                run_id=run_id,
+                skipped=t.container in skipped_targets,
+                metrics=metrics,
+                compliance_tags=scenario.compliance_tags,
+                started_at=started_at,
+                step_summary=step_summary,
+                error=execution_error,
+            ))
+
         return results
 
     def _execute(self, target: TargetConfig, scenario: SingleFaultScenario,
@@ -62,6 +199,17 @@ class Orchestrator:
             )
         console.print("[dim]Pre-flight: OK[/dim]")
 
+        step_summary = [
+            f"baseline {scenario.baseline_seconds}s",
+            f"inject {scenario.fault.type}",
+            f"observe {scenario.observation_seconds}s",
+            "recover",
+            f"wait {scenario.recovery_seconds}s",
+        ]
+        started_at = time.time()
+        metrics = {}
+        execution_error = None
+
         try:
             telemetry.start()
 
@@ -74,7 +222,6 @@ class Orchestrator:
             try:
                 injector.inject(fault_dict)
             except FaultNotApplied as e:
-                telemetry.stop()
                 console.print(f"[bold red]SKIP:[/bold red] {e}")
                 return ScenarioResult(
                     scenario=scenario.name,
@@ -85,6 +232,8 @@ class Orchestrator:
                     run_id=run_id,
                     skipped=True,
                     compliance_tags=scenario.compliance_tags,
+                    started_at=started_at,
+                    step_summary=step_summary,
                 )
             telemetry.mark_fault()
 
@@ -96,18 +245,42 @@ class Orchestrator:
             time.sleep(scenario.recovery_seconds)
 
             metrics = telemetry.collect()
-            result = ScenarioResult(
-                scenario=scenario.name,
-                domain=scenario.domain,
-                fault_type=scenario.fault.type,
-                target=target.container,
-                service=target.service,
-                run_id=run_id,
-                metrics=metrics,
-                compliance_tags=scenario.compliance_tags,
-            )
+
+        except Exception as e:
+            execution_error = f"{type(e).__name__}: {e}"
+            console.print(f"[bold red]Scenario error:[/bold red] {execution_error}")
+            metrics = telemetry.collect()
 
         finally:
             telemetry.stop()
 
-        return result
+        return ScenarioResult(
+            scenario=scenario.name,
+            domain=scenario.domain,
+            fault_type=scenario.fault.type,
+            target=target.container,
+            service=target.service,
+            run_id=run_id,
+            metrics=metrics,
+            compliance_tags=scenario.compliance_tags,
+            started_at=started_at,
+            step_summary=step_summary,
+            error=execution_error,
+        )
+
+
+def _build_step_summary(steps) -> list[str]:
+    lines = []
+    for step in steps:
+        if step.action == "baseline":
+            lines.append(f"baseline {step.seconds}s")
+        elif step.action == "inject":
+            lines.append(f"inject {step.fault.type} → {step.target}")
+        elif step.action == "wait":
+            lines.append(f"wait {step.seconds}s")
+        elif step.action == "recover":
+            lines.append(f"recover {step.target}")
+        elif step.action == "probe":
+            label = f" [{step.window}]" if step.window else ""
+            lines.append(f"probe {step.probe_name} on {step.target} ({step.seconds}s){label}")
+    return lines

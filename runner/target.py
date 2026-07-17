@@ -11,6 +11,7 @@ class TargetConfig:
     health_path: str = None
     health_port: int = 8080
     health_process: str = None
+    probes: dict = None
 
 
 def load_target(targets_path: str, service: str) -> TargetConfig:
@@ -20,6 +21,12 @@ def load_target(targets_path: str, service: str) -> TargetConfig:
         available = ", ".join(services.keys())
         raise ValueError(f"Service '{service}' not found in {targets_path}. Available: {available}")
     return _parse(service, services[service])
+
+
+def load_targets_by_name(targets_path: str) -> dict[str, TargetConfig]:
+    raw = yaml.safe_load(Path(targets_path).read_text())
+    all_services = raw.get("services", {})
+    return {name: _parse(name, all_services[name]) for name in all_services}
 
 
 def load_targets(targets_path: str, services: list[str] = None) -> list[TargetConfig]:
@@ -46,4 +53,5 @@ def _parse(name: str, raw: dict) -> TargetConfig:
         health_path=raw.get("health_path"),
         health_port=raw.get("port", 8080),
         health_process=raw.get("process"),
+        probes=raw.get("probes") or {},
     )
